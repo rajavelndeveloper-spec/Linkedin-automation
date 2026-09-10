@@ -47,11 +47,15 @@ and `lead-url-enrich`'s diff for it.
   node tools/crm-leads-update.js --id <lead-id> --log ./logs/crm-leads-enrich-responses.md --timezone "<resolved>"
   ```
   with the merged patch body (a single JSON object) on stdin. Parse `{ commit_state, id, status,
-  response, error }`. On every real send the tool also appends the exact body it sent to
-  `./logs/crm-leads-enrich-payloads.jsonl` (append-only JSONL, timestamped in UTC and
+  response, error }`. On every real send the tool also appends the exact body it sent to the JSON
+  array in `./logs/crm-leads-enrich-payloads.json` (rewritten atomically, timestamped in UTC and
   resolved-local) — you neither manage nor pass anything for that file.
+- **Exactly one `tools/crm-leads-update.js` call per lead — one PATCH request, never a second.**
+  A `commit_state` of `failed` or `unknown` is that lead's final outcome for this run: do not
+  re-run the tool, do not build a smaller body and try again, do not "confirm" with a follow-up
+  request. Report it and stop. The orchestrator counts it as a failure in `RUN_RESULT` and
+  triggers the failure email; the lead simply isn't ledger-recorded, so a future `/enrich` run
+  (not this one, and not you) may pick it up again.
 - Return `runner_alignment` (`"checked-unchanged"` or `"updated-verified"`), `commit_state`,
   `id`, and on failure the safe HTTP/error summary — never the full response body if it might
-  contain sensitive values beyond what the tool's own log already redacts. Do not retry a
-  failed/unknown PATCH within this call; the orchestrator decides whether the run as a whole is
-  `partial` or `failed`.
+  contain sensitive values beyond what the tool's own log already redacts.

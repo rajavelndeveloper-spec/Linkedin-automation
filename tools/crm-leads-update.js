@@ -10,6 +10,16 @@
  * ever reaches this script; this script's job is validating the shape and
  * sending it, not deciding content.
  *
+ * EXACTLY ONE PATCH request is made per invocation - never more than one.
+ * There is no retry, no second attempt, no backoff loop, for any failure
+ * mode (non-2xx response, transport/network error, timeout, ambiguous send).
+ * The single HTTP call's result is final: 2xx -> commit_state "confirmed";
+ * anything else -> "failed" (a response was received) or "unknown" (the send
+ * itself errored). A "failed"/"unknown" result IS the lead's failure - the
+ * caller reports it through RUN_RESULT and sends the failure email, it does
+ * not ask this script to try again. (Re-attempting a still-pending lead is a
+ * concern of a whole separate future /enrich run, never of this process.)
+ *
  * Usage:
  *   node crm-leads-update.js --id <lead-id> --log <path> --timezone <tz>
  *     [--payload-log <path>] [--dry-run]
@@ -26,12 +36,15 @@
  * no agent manages them):
  *   1. --log  : a human-readable markdown table, one row per attempt, with
  *               resolved-local Date/Time and safe row details (no payload).
- *   2. --payload-log : an append-only JSONL payload audit trail - one JSON
- *               object per REAL send (never on --dry-run) holding the exact
- *               request body that went to Directus, the target row, the
- *               field/dropped-key lists, the outcome, and both a UTC
- *               `logged_at` and the resolved-local `date`/`time`/`timezone`.
- *               Defaults next to --log as crm-leads-enrich-payloads.jsonl.
+ *   2. --payload-log : a JSON-array payload audit file (pretty-printed) - one
+ *               array element appended per REAL send (never on --dry-run)
+ *               holding the exact request body that went to Directus, the
+ *               target row, the field/dropped-key lists, the outcome, and
+ *               both a UTC `logged_at` and the resolved-local
+ *               `date`/`time`/`timezone`. Read-modify-write, done atomically
+ *               (temp file + rename) so a killed process never leaves it
+ *               truncated; a missing/empty/corrupt file restarts from [].
+ *               Defaults next to --log as crm-leads-enrich-payloads.json.
  *               This file intentionally contains full contact values (email/
  *               phone/etc.) as sent - it is a local audit log, never a
  *               delivery target, and is covered by .gitignore's logs/ rule.
@@ -215,20 +228,36 @@ function appendLogRow(logPath, row) {
 // Default payload-audit path: alongside the markdown response log, so the
 // two always land in the same logs/ dir even when --log is overridden.
 function defaultPayloadLog(mdLogPath) {
-  return path.join(path.dirname(mdLogPath || "./logs"), "crm-leads-enrich-payloads.jsonl");
+  return path.join(path.dirname(mdLogPath || "./logs"), "crm-leads-enrich-payloads.json");
 }
 
-// Appends the exact request body of one real PATCH attempt as a single JSON
-// line (JSONL - append-only, so a process killed mid-run can never corrupt
-// records already written). This is the payload audit trail: what was sent,
-// to which row, when (UTC `logged_at` + resolved-local date/time/zone), and
-// how it landed. Never called on --dry-run. A failure here is swallowed on
-// purpose - a missing audit line must never turn a confirmed PATCH into a
-// reported failure, and the markdown log still carries the attempt's row.
+// Appends the exact request body of one real PATCH attempt as one element of
+// a JSON array file. Read the existing array, push, and rewrite it atomically
+// (temp file + rename) so a process killed mid-write can never leave the file
+// truncated or invalid. A missing, empty, or unparseable file is treated as
+// an empty array rather than a hard error. This is the payload audit trail:
+// what was sent, to which row, when (UTC `logged_at` + resolved-local
+// date/time/zone), and how it landed. Never called on --dry-run. A failure
+// here is swallowed on purpose - a missing audit entry must never turn a
+// confirmed PATCH into a reported failure, and the markdown log still carries
+// the attempt's row.
 function appendPayloadRecord(payloadLogPath, record) {
   try {
     fs.mkdirSync(path.dirname(payloadLogPath), { recursive: true });
-    fs.appendFileSync(payloadLogPath, JSON.stringify(record) + "\n");
+    let records = [];
+    try {
+      const existing = fs.readFileSync(payloadLogPath, "utf8");
+      if (existing.trim()) {
+        const parsed = JSON.parse(existing);
+        if (Array.isArray(parsed)) records = parsed;
+      }
+    } catch {
+      // No file yet, or it was empty/corrupt - start a fresh array.
+    }
+    records.push(record);
+    const tmpPath = `${payloadLogPath}.tmp-${process.pid}`;
+    fs.writeFileSync(tmpPath, JSON.stringify(records, null, 2) + "\n");
+    fs.renameSync(tmpPath, payloadLogPath);
   } catch {
     // Intentionally ignored - see comment above.
   }

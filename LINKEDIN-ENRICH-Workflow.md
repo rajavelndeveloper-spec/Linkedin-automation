@@ -198,16 +198,22 @@ node tools/crm-leads-update.js --id <lead-id> --log ./logs/crm-leads-enrich-resp
 ```
 (merged patch body via stdin)
 
-Parse `{ commit_state, id, status, response, error }`. `commit_state: "confirmed"` is success;
-`"failed"`/`"unknown"` are both reportable failures for that lead — never retried automatically
-within the same run.
+Parse `{ commit_state, id, status, response, error }`. **Exactly one PATCH request is sent per
+lead — never a second call, no retry, no backoff, for any failure mode (non-2xx, transport error,
+timeout, ambiguous send).** `commit_state: "confirmed"` is success. `"failed"` (a non-2xx
+response) and `"unknown"` (the send itself errored) are each that lead's **final** outcome for
+this run: the lead is counted as failed, `RUN_RESULT` reflects it, and the failure email is sent
+per the Notification section below — nothing re-attempts the call. The lead is deliberately left
+out of the idempotency ledger, so a *separate future* `/enrich` run for the same date may try it
+again; that is not an in-run retry and is the only "retry" that exists.
 
-Every real send (never a `--dry-run`) also appends its exact request body to
-`./logs/crm-leads-enrich-payloads.jsonl` — one JSON object per line: `payload` (the body as sent),
+Every real send (never a `--dry-run`) also appends its exact request body to the JSON array in
+`./logs/crm-leads-enrich-payloads.json` — one element per send: `payload` (the body as sent),
 `id`, `target`, `fields`, `dropped_keys`, `commit_state`, `http_status`, `duration_ms`, and both a
-UTC `logged_at` and the resolved-local `date`/`time`/`timezone`. This is a payload audit trail
-separate from the human-readable response log; `tools/crm-leads-update.js` writes it on its own —
-`crm-leads-patch` neither manages nor passes anything for it.
+UTC `logged_at` and the resolved-local `date`/`time`/`timezone`. The file is read-modified-written
+atomically (temp file + rename). This is a payload audit trail separate from the human-readable
+response log; `tools/crm-leads-update.js` writes it on its own — `crm-leads-patch` neither manages
+nor passes anything for it.
 
 **Record the ledger immediately after this, for this one lead — before moving to the next lead in
 the batch**, per the Idempotency section above:

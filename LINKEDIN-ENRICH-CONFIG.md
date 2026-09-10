@@ -28,7 +28,7 @@ never for a plain Node script invoked from inside an agent's own `bash` call.
 | Chrome profile | `D:/chrome-profiles/enrich-linkedin` (override with `LINKEDIN_CHROME_PROFILE`) — its own dedicated persistent profile, created by the one-time manual login in `README.md`'s LinkedIn login section and reused automatically on every later run. A persistent Playwright context locks its profile directory, so never point two concurrently-running projects at the same path |
 | Failure email notification | Enabled |
 | PATCH response log | `./logs/crm-leads-enrich-responses.md` (gitignored) — human-readable table, one row per attempt, no payload body |
-| PATCH payload log | `./logs/crm-leads-enrich-payloads.jsonl` (gitignored, append-only JSONL) — the exact request body sent for every real PATCH, with a UTC `logged_at` plus resolved-local `date`/`time`/`timezone`, the target row, `fields`/`dropped_keys`, and the outcome. Written automatically by `tools/crm-leads-update.js`; never on `--dry-run`. Defaults alongside the response log; override with `--payload-log <path>` |
+| PATCH payload log | `./logs/crm-leads-enrich-payloads.json` (gitignored, a JSON array — read-modify-write, rewritten atomically) — one element per real PATCH holding the exact request body sent, a UTC `logged_at` plus resolved-local `date`/`time`/`timezone`, the target row, `fields`/`dropped_keys`, and the outcome. Written automatically by `tools/crm-leads-update.js`; never on `--dry-run`. Defaults alongside the response log; override with `--payload-log <path>` |
 | Notification log | `./logs/enrich-notifications.md` (gitignored) |
 | Time zone | Runtime system time zone |
 

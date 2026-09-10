@@ -57,8 +57,11 @@ permission:
      for the Finish summary and `RUN_RESULT`'s `errors`. **Do not record a ledger entry for
      `session_expired`** — leave it pending so the next run retries it once a human
      re-authenticates the profile.
-   - For each lead whose result has a non-empty `enriched_fields`, invoke `crm-leads-patch` with
-     that lead's original row + the diff.
+   - For each lead whose result has a non-empty `enriched_fields`, invoke `crm-leads-patch`
+     **once** with that lead's original row + the diff. That subagent sends **exactly one PATCH
+     request** — there is no retry on failure. A `commit_state` of `failed`/`unknown` is that
+     lead's final outcome: count it as `failed` and move to the next lead; never re-invoke
+     `crm-leads-patch` for it in this run.
    - **Update the ledger once per lead, immediately after that lead's own terminal step — never
      batched to the end of the run**, so a crash partway through this run still preserves every
      lead it did finish:
@@ -66,8 +69,9 @@ permission:
      - `outcome: "no-new-data"` (empty diff) → record immediately, skip `crm-leads-patch`
        entirely, and count it as `skipped`, not `failed`.
      - A diff that got PATCHed → record with `crm-leads-patch`'s `outcome` and `commit_state`
-       (`confirmed` marks it done; `failed`/`unknown` leaves it retry-eligible next run — the
-       ledger tool itself decides this, you only need to pass the values through accurately).
+       (`confirmed` marks it done; `failed`/`unknown` is a terminal failure for *this* run — no
+       in-run retry — but is not written to the ledger as done, so only a separate future run
+       may re-attempt it; the ledger tool itself decides this, you only pass the values through).
      - `session_expired`/`selectors_suspect` → do not call `--record` at all for this lead (see
        above).
    - Track running totals: `fetched` (raw fetch count from step 2), `already_processed` (from step
@@ -76,7 +80,9 @@ permission:
      `failed`/`unknown`), `skipped` (`no-new-data` leads among the pending set).
 5. **Notify:** Invoke `email-notify` at most once, only per `LINKEDIN-ENRICH-Workflow.md`'s
    Notification section (fetch failure, `session_expired`, a genuine final zero, or any PATCH
-   failure). Do not notify a run that updated at least one lead with zero failures. A run whose
+   failure). **Any lead whose single PATCH came back `failed`/`unknown` is a qualifying failure
+   and must trigger this email** — there is no retry that could still rescue it. Do not notify a
+   run that updated at least one lead with zero failures. A run whose
    entire fetched set was `already_processed` (nothing left `pending`) is not a failure and not a
    genuine final zero either — it's a correctly-skipped no-op; do not notify for it.
 6. **Finish:** Report fetched/already_processed/enriched/updated/failed/skipped counts, any

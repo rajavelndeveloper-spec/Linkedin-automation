@@ -83,17 +83,22 @@ reason, per lead) → crm-leads-patch (merge + PATCH, per lead) → email-notify
   script in place only for a material mismatch, verifies it, then sends. No duplicate runner,
   alternate script, or helper file — same discipline as the sibling project's
   `linkedin-api-publish.md`.
-- Failed/blocked/partial/unknown PATCH delivery is reported as a failure through `RUN_RESULT` and
-  the notify step — there is no local-file fallback; nothing in this project is ever written to
-  disk as a delivery target except the gitignored operational logs under `logs/`.
+- **One PATCH request per lead, no retry.** `tools/crm-leads-update.js` sends exactly one HTTP
+  PATCH per invocation and never re-sends — no second attempt, no backoff — for any failure mode
+  (non-2xx, transport error, timeout, ambiguous send). A `failed`/`unknown` result is that lead's
+  final outcome for the run: it is reported as a failure through `RUN_RESULT` and always triggers
+  the notify step. There is no local-file fallback; nothing in this project is ever written to
+  disk as a delivery target except the gitignored operational logs under `logs/`. The lead is not
+  written to the idempotency ledger on failure, so a *separate future* `/enrich` run may retry it
+  — that cross-run re-attempt is the only retry that exists.
 - `tools/crm-leads-update.js` writes two PATCH logs automatically, both only under the gitignored
   `logs/` dir and never a delivery target: a human-readable markdown response log grouped by
   attempt with resolved-local Date/Time and safe row details (no payload, no secrets, no
-  headers), and an append-only JSONL payload audit log (`logs/crm-leads-enrich-payloads.jsonl`)
-  holding the exact request body of every real send — including any contact values it carried —
-  with UTC and resolved-local timestamps. Agents never write either file directly and never add a
-  third log; do not log secrets, headers, or credentials anywhere beyond what that tool already
-  writes.
+  headers), and a JSON-array payload audit log (`logs/crm-leads-enrich-payloads.json`, rewritten
+  atomically on each append) holding the exact request body of every real send — including any
+  contact values it carried — with UTC and resolved-local timestamps. Agents never write either
+  file directly and never add a third log; do not log secrets, headers, or credentials anywhere
+  beyond what that tool already writes.
 
 ## Change and audit rule
 
