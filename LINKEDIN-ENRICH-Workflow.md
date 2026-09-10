@@ -75,8 +75,15 @@ node tools/linkedin-enrich-scrape.js --url "<url>" --hops profile,company
 ```
 
 Parse the JSON on stdout: `{ url, type, main_text, poster, reposted_by, original_post,
-company_link, links, profile_page, company_page, hops_done, extraction_uncertain,
+company_link, links, profile_page, job_page, company_page, hops_done, extraction_uncertain,
 session_expired, selectors_suspect, error, started_at, finished_at, duration_ms }`.
+
+`job_page` (`{ url, main_text, company_link }` or `null`) is populated only for a **post** source
+that had no direct `/company/` link and instead embedded a "View job" card — the tool opens that
+job page once to resolve the employer, then runs the normal company About hop from it. When
+present, `hops_done` includes `"job"` and `company_page` is populated the same as for a job source
+URL. Treat `job_page.main_text` as an additional company-fact source (it carries an "About the
+company" blurb), ranked below `company_page.main_text` but above nothing.
 
 - `error` non-null or `session_expired: true` → treat as terminal for this lead's *this URL*
   attempt. `session_expired` takes precedence over `extraction_uncertain`/`selectors_suspect` and
@@ -88,9 +95,10 @@ session_expired, selectors_suspect, error, started_at, finished_at, duration_ms 
 - `extraction_uncertain: true` (and `session_expired: false`) → this specific URL yielded nothing
   usable. Try the lead's next candidate URL if one remains in budget; otherwise this lead's
   outcome is `"no-new-data"`.
-- Otherwise, extract fields from `main_text` (source page), `profile_page.main_text`, and
-  `company_page.main_text` only — no web search, no inference from what a similar lead usually
-  has, no pattern-guessing an email from a name.
+- Otherwise, extract fields from `main_text` (source page), `profile_page.main_text`,
+  `company_page.main_text`, and `job_page.main_text` (when the post's job hop ran) only — no web
+  search, no inference from what a similar lead usually has, no pattern-guessing an email from a
+  name.
 
 **Identity resolution** — check this before extracting any identity field:
 - If `original_post` is present (a resolved reshare), its `poster` is the lead's identity.
@@ -125,9 +133,10 @@ still comes only from the scraped text/links actually in hand:**
     prefer this over a link's visible text whenever the company hop ran.
   - An "Overview" paragraph is also present but is marketing copy, not a fact source — don't
     mine it for anything beyond what the labels above already give you.
-  If the company hop did **not** run (no `company_page`), fall back to whatever company panel
-  text and `organization_linkedin` link are present on the source job/post page itself
-  (`main_text`) — the same fields, just a thinner source.
+  If the company hop did **not** run (no `company_page`), fall back to `job_page.main_text` when a
+  post's job hop ran (its "About the company" blurb), then to whatever company panel text and
+  `organization_linkedin` link are present on the source job/post page itself (`main_text`) — the
+  same fields, each successively thinner sources.
 - `website` / `organization_linkedin` — beyond the `company_page` labels above, also accept a
   non-LinkedIn company URL (`website`) or a `linkedin.com/company/...` link
   (`organization_linkedin`) literally present in `links` or `main_text`.

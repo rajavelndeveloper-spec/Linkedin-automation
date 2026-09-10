@@ -14,16 +14,22 @@
  *
  * Output: one JSON object on stdout - { url, type, main_text, poster,
  * reposted_by, original_post, company_link, links, profile_page (with
- * main_text and contact_info_text), company_page, hops_done,
- * extraction_uncertain, session_expired, selectors_suspect, started_at,
- * finished_at, duration_ms, error }.
+ * main_text and contact_info_text), job_page (with main_text and
+ * company_link), company_page, hops_done, extraction_uncertain,
+ * session_expired, selectors_suspect, started_at, finished_at, duration_ms,
+ * error }.
  *
- * `hops` is a bounded allowance, not a target: at most 3 additional page
- * loads beyond the source URL's own (4 total per invocation) - the profile
- * hop costs 2 (the main profile page, then its Contact info overlay) and
- * the company hop costs 1 (forced onto the About tab specifically, see
- * toCompanyAboutUrl) - see LINKEDIN-ENRICH-CONFIG.md. Pass an empty `--hops`
- * to scrape only the source page.
+ * `hops` is a bounded allowance, not a target: at most 4 additional page
+ * loads beyond the source URL's own (5 total per invocation) - the profile
+ * hop costs 2 (the main profile page, then its Contact info overlay), the
+ * company hop costs 1 (forced onto the About tab specifically, see
+ * toCompanyAboutUrl), and for a POST whose only route to the employer is an
+ * embedded "View job" card, one extra load opens that job page to read the
+ * company link off it (scrapeEmbeddedJob) before the company hop runs - the
+ * same company facts a type:"job" source URL would have given directly. That
+ * job hop is taken only when the post carries no /company/ link of its own.
+ * See LINKEDIN-ENRICH-CONFIG.md. Pass an empty `--hops` to scrape only the
+ * source page.
  *
  * SELECTOR CONFIDENCE - read before trusting this blindly. The Jobs/Posts
  * scraper in the sibling ai-automation-system project captured its selectors
@@ -159,14 +165,15 @@ async function extractRelevantLinks(page) {
       }
       const isProfile = /linkedin\.com\/in\//i.test(absolute);
       const isCompany = /linkedin\.com\/company\//i.test(absolute);
+      const isJob = /linkedin\.com\/jobs\/view\//i.test(absolute);
       const isExternal = !/linkedin\.com/i.test(absolute) && /^https?:\/\//i.test(absolute);
-      if (!isProfile && !isCompany && !isExternal) continue;
+      if (!isProfile && !isCompany && !isJob && !isExternal) continue;
       if (seen.has(absolute)) continue;
       seen.add(absolute);
       kept.push({
         href: absolute,
         text: link.text.slice(0, 120),
-        kind: isProfile ? "profile" : isCompany ? "company" : "external",
+        kind: isProfile ? "profile" : isCompany ? "company" : isJob ? "job" : "external",
       });
       if (kept.length >= MAX_LINKS) break;
     }
@@ -324,6 +331,28 @@ async function fetchContactInfoText(page, profileUrl) {
   }
 }
 
+// A post often embeds a job as a "View job" card (/jobs/view/<id>) instead of
+// linking the company directly - the company is only reachable by opening
+// that job page, exactly as if the job URL had been the source URL. When a
+// post carries no /company/ link of its own, open the embedded job once and
+// read the company link (and the job page's own text, which carries an
+// "About the company" blurb) off it, so the normal company About hop can run
+// from there. One extra page load, taken only for this post-with-embedded-job
+// case - a job or company source URL never needs it.
+async function scrapeEmbeddedJobForCompany(page, jobUrl) {
+  try {
+    await page.goto(jobUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+    await page.waitForTimeout(1500);
+    if (await isLoggedOut(page)) return null;
+    const jobMainText = await extractMainText(page);
+    const jobLinks = await extractRelevantLinks(page);
+    const companyLink = jobLinks.find((l) => l.kind === "company")?.href || null;
+    return { url: jobUrl, main_text: jobMainText, company_link: companyLink };
+  } catch {
+    return null;
+  }
+}
+
 async function scrapeEnrichUrl(page, url, hops) {
   let type = classifyEnrichUrl(url);
 
@@ -333,7 +362,7 @@ async function scrapeEnrichUrl(page, url, hops) {
   if (await isLoggedOut(page)) {
     return {
       url, type, main_text: "", poster: null, reposted_by: null, original_post: null,
-      company_link: null, links: [], profile_page: null, company_page: null,
+      company_link: null, links: [], profile_page: null, job_page: null, company_page: null,
       hops_done: [], extraction_uncertain: true, session_expired: true, selectors_suspect: false,
     };
   }
@@ -360,12 +389,32 @@ async function scrapeEnrichUrl(page, url, hops) {
   // Generic signal, not page-type-specific: the first /company/ link on the
   // page is the poster's company on a job listing and usually the author's
   // current company when LinkedIn renders one on a post.
-  const companyLink = links.find((l) => l.kind === "company")?.href || null;
+  let companyLink = links.find((l) => l.kind === "company")?.href || null;
 
   const hopsDone = [];
   let profile_page = null;
+  let job_page = null;
   let company_page = null;
   const profileUrl = original_post?.poster?.profileUrl || poster?.profileUrl || null;
+
+  // Post with an embedded "View job" card but no direct company link: resolve
+  // the employer through that job page first (one extra load), so the company
+  // hop below has a /company/ link to work with - the same company facts a
+  // type:"job" source URL would have produced directly.
+  if (
+    hops.includes("company") &&
+    !companyLink &&
+    (type === "post" || type === "unknown")
+  ) {
+    const embeddedJobUrl = links.find((l) => l.kind === "job")?.href || null;
+    if (embeddedJobUrl) {
+      job_page = await scrapeEmbeddedJobForCompany(page, embeddedJobUrl);
+      if (job_page) {
+        hopsDone.push("job");
+        if (job_page.company_link) companyLink = job_page.company_link;
+      }
+    }
+  }
 
   if (hops.includes("profile") && profileUrl) {
     try {
@@ -400,7 +449,7 @@ async function scrapeEnrichUrl(page, url, hops) {
 
   return {
     url, type, main_text, poster, reposted_by, original_post,
-    company_link: companyLink, links, profile_page, company_page,
+    company_link: companyLink, links, profile_page, job_page, company_page,
     hops_done: hopsDone, extraction_uncertain: extractionUncertain,
     session_expired: false, selectors_suspect: extractionUncertain,
   };
@@ -455,6 +504,7 @@ async function main() {
         company_link: null,
         links: [],
         profile_page: null,
+        job_page: null,
         company_page: null,
         hops_done: [],
         extraction_uncertain: true,

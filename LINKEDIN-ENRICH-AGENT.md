@@ -62,10 +62,12 @@ reason, per lead) → crm-leads-patch (merge + PATCH, per lead) → email-notify
   confidence to a genuine original-poster match.
 - At most 3 URLs are tried per lead (`job_posting_url` first, then the lead's own `linkedin`
   column if different, then the first unseen `lead_source_description.source_urls` entry) and at
-  most 4 page loads per URL attempt (source + profile main + profile Contact info overlay +
-  company About tab) — both hard-capped in code
-  (`LINKEDIN-ENRICH-CONFIG.md`/`tools/linkedin-enrich-scrape.js`), not agent reasoning. This
-  bounds both LLM cost and LinkedIn account-risk footprint per lead.
+  most 5 page loads per URL attempt (source + profile main + profile Contact info overlay +
+  company About tab, plus — only for a post that embeds a "View job" card and has no direct
+  company link — one load of that job page to resolve the employer; job/company source URLs stay
+  at 4) — bounded by which hops `tools/linkedin-enrich-scrape.js` runs
+  (`LINKEDIN-ENRICH-CONFIG.md`), not agent reasoning. This bounds both LLM cost and LinkedIn
+  account-risk footprint per lead.
 - Parallelize only independent leads with isolated browser state (see Batching below). Never
   create an agent per URL within a single lead — one `lead-url-enrich` invocation owns the whole
   URL-selection-and-hop sequence for its lead.

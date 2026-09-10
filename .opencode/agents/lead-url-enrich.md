@@ -24,9 +24,10 @@ from what a similar lead usually has — see `LINKEDIN-ENRICH-Workflow.md`'s evi
 2. **Poster identity** — the real human behind this lead: `firstname`, `lastname`, `title`.
 3. **Contact info** — anything reachable: `primary_email`, `secondary_email`, `phone`, `mobile`,
    `whatsapp`.
-Read `main_text`, `profile_page.main_text`, and `company_page.main_text` **in full**, not a
-skim — these are short, plain-text pages, and the fields above are exactly what this whole flow
-exists to find. Do not stop at the first sentence or two of each block.
+Read `main_text`, `profile_page.main_text`, `company_page.main_text`, and `job_page.main_text`
+(when present) **in full**, not a skim — these are short, plain-text pages, and the fields above
+are exactly what this whole flow exists to find. Do not stop at the first sentence or two of each
+block.
 
 **`linkedin` is a source you read, never a field you write.** The lead's existing `linkedin`
 column is one more URL to open — like `job_posting_url`, it is not guaranteed to be a resolved
@@ -46,8 +47,13 @@ also enforces this in code, but do not rely on that backstop; simply never write
    node tools/linkedin-enrich-scrape.js --url "<url>" --hops profile,company
    ```
    Parse the JSON on stdout: `{ url, type, main_text, poster, reposted_by, original_post,
-   company_link, links, profile_page, company_page, hops_done, extraction_uncertain,
+   company_link, links, profile_page, job_page, company_page, hops_done, extraction_uncertain,
    session_expired, selectors_suspect, error, started_at, finished_at, duration_ms }`.
+   `job_page` (`{ url, main_text, company_link }` or `null`) appears only when the source was a
+   **post** with an embedded "View job" card and no direct company link — the tool opened that job
+   page once to resolve the employer, then ran the company About hop from it, so `company_page` is
+   populated just as it would be for a job source URL. `job_page.main_text` is an extra
+   company-fact source (its "About the company" blurb), below `company_page.main_text`.
    - `error` non-null or `session_expired: true` → stop for this lead immediately, do not try the
      second URL, and return `outcome: "session_expired"` (if that flag was set) or report the
      error plainly. `session_expired` means the persistent Chrome profile's LinkedIn session has
@@ -57,7 +63,7 @@ also enforces this in code, but do not rely on that backstop; simply never write
      Try the lead's second candidate URL if one remains in your budget; otherwise return
      `outcome: "no-new-data"` with an empty `enriched_fields`.
    - Otherwise, extract from `main_text` (the source page), and from `profile_page.main_text` /
-     `company_page.main_text` when those hops ran — nothing else.
+     `company_page.main_text` / `job_page.main_text` when those hops ran — nothing else.
 3. **Identity resolution — do this before extracting any identity field:**
    - `original_post` present (a resolved reshare) → its `poster` is this lead's identity. Record
      `reposted_by` (if also present) only as a note, never as the contact.
@@ -84,6 +90,9 @@ also enforces this in code, but do not rely on that backstop; simply never write
      the city portion → `city`; the page's own name (its title, not a link's visible text) →
      `organization_name`. Its "Overview" paragraph is marketing copy, not a fact source — don't
      mine it beyond what the labels above give you.
+   - **From `job_page.main_text`** (only when a post's job hop ran and there is still no
+     `company_page`): the job page's own "About the company" blurb — `organization_name`,
+     `website`, and any stated headcount, same reading as `company_page` but a thinner source.
    - **From `main_text`** (the source job/post page) when there was no company hop, or as a
      supplement: `organization_name`/`website` only when literally named/linked in the posting
      itself; `employees` only if the posting text states a headcount directly (rare, but do check
