@@ -1,0 +1,8 @@
+{
+  "name": "ai-automation-search",
+  "private": true,
+  "description": "Node tooling for /enrich - opens the exact LinkedIn job/post URL already stored on an existing crm_leads row, scrapes company + poster identity from that page (and one bounded profile/company hop), and PATCHes the same row with whatever it found. Not an npm package, just dependencies for the scripts under tools/.",
+  "dependencies": {
+    "playwright": "1.62.1"
+  }
+}

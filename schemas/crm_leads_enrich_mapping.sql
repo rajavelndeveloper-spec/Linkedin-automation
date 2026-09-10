@@ -1,0 +1,111 @@
+-- ============================================================================
+-- /enrich — crm_leads PATCH field mapping (ACTIVE)
+--
+-- This is the live contract crm-leads-patch.md and tools/crm-leads-update.js
+-- both use. No ALTER TABLE is needed -- every enrichable field reuses an
+-- existing crm_leads column or lives inside lead_source_description (json).
+--
+-- Direction of data flow is the opposite of a sibling project's /jobs and
+-- /posts: those INSERT new rows through a custom extension endpoint
+-- (x-crm-leads-secret header). This flow only ever PATCHes a row that
+-- already exists, through Directus's native REST endpoint (Bearer token) --
+-- see .env.example for why these are separate env vars even on the same host.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- Allow-listed PATCH keys — enforced in tools/crm-leads-update.js's
+-- ALLOWED_TOP_KEYS, not just documented here. Anything not in this list is
+-- stripped from the request body before it is ever sent.
+-- ----------------------------------------------------------------------------
+-- organization_name, website, organization_linkedin, employees  -> company
+--                                                                    facts found on the job/post/company page
+-- firstname, lastname, title                                    -> the resolved poster's identity (see
+--                                                                    "Reshare resolution" below) -- the
+--                                                                    ORIGINAL poster for a resolved reshare,
+--                                                                    never the resharer
+-- description                                                    -> free-text notes; enrichment APPENDS a
+--                                                                    short note here, never replaces
+--                                                                    whatever was already written at insert
+--                                                                    time
+-- primary_email, secondary_email, phone, mobile, whatsapp
+--                                                                 -> contact info, only when literally
+--                                                                    visible in scraped text -- LinkedIn does
+--                                                                    not expose email/phone by default, so
+--                                                                    these legitimately stay untouched
+--                                                                    ("not available") on most rows. That is
+--                                                                    a correct outcome, not a failed run
+-- city, street, zipcode                                          -> address, only when literally present
+-- tags (json)                                                     -> merged (union, deduped), never replaced
+-- lead_source_description (json)                                 -> merged, see shape below -- never a
+--                                                                    full-object replace
+--
+-- Never sent, on purpose: lead_source, lead_status, country, state, industry
+-- (CRM lookup-table FK ids this flow cannot produce), primary_bde/
+-- secondary_bde (assignment, not an enrichment fact), recommended_for_outreach
+-- (a scoring decision made at insert time -- this flow does not re-score),
+-- is_ai_generated / job_posting_url / job_source_type (identity of the row,
+-- never rewritten), email_opt_out (compliance flag, never touched by
+-- automation), linkedin (a SOURCE this flow reads and scrapes from -- it can
+-- hold a post URL just as easily as a resolved profile -- never a derived
+-- fact it writes; tools/crm-leads-update.js enforces this in code, not just
+-- in agent instructions).
+
+-- ----------------------------------------------------------------------------
+-- lead_source_description (json) — merge behavior
+-- Flexible on purpose (plain json, no CHECK constraint), same as the sibling
+-- project's insert-time shape. crm-leads-patch.md reads the lead's EXISTING
+-- lead_source_description first and merges into it -- it never sends a bare
+-- replacement object, which would silently drop keys the insert flow wrote
+-- (job_title, work_mode, skills_in_jd, the five scores, etc.).
+-- ----------------------------------------------------------------------------
+-- {
+--   ... every key already there, untouched ...
+--   "source_urls": [...],                 -- APPENDED: every URL actually
+--                                             visited this run (source +
+--                                             profile hop + company hop),
+--                                             deduplicated against what was
+--                                             already there
+--   "enriched_at": "2026-09-09T12:00:00Z",  -- ISO timestamp of this PATCH
+--   "enrichment_outcome": "enriched",       -- enriched | partial | no-new-data
+--                                             | resharer-fallback
+--   "identity_confidence": "original-post"  -- present only for a Post lead:
+--                                             "original-post" | "resharer-fallback"
+--   "phone_source": "company_about_page"     -- present only when `phone` was filled from the
+--                                             company's About-tab phone number because the
+--                                             poster's own contact info wasn't found -- marks it
+--                                             as NOT a personal number
+-- }
+
+-- ----------------------------------------------------------------------------
+-- Reshare resolution
+-- ----------------------------------------------------------------------------
+-- A LinkedIn "X reposted this" wrapper means the resharer is NOT the hiring
+-- contact -- the embedded original post's author is. lead-url-enrich.md
+-- always prefers original_post.poster over reposted_by when
+-- tools/linkedin-enrich-scrape.js returns both. If only a resharer identity
+-- could be captured (original post deleted/private/unreadable),
+-- firstname/lastname/title may fall back to the resharer, but
+-- lead_source_description.identity_confidence must then read
+-- "resharer-fallback" -- never silently presented as the same confidence as
+-- a genuine original-poster match.
+
+-- ============================================================================
+-- Setup needed before this flow can PATCH crm_leads
+-- ============================================================================
+
+-- 1. A Directus static access token (or a role/user token) with read access
+--    to crm_leads (GET /items/crm_leads) and update access (PATCH
+--    /items/crm_leads/{id}). This is a different credential than a sibling
+--    project's CRM_LEADS_API_SECRET (that one authenticates a custom
+--    extension route with a header the extension itself checks; this token
+--    authenticates directly against Directus's own permission system).
+--    Set as CRM_ENRICH_API_TOKEN.
+
+-- 2. CRM_ENRICH_API_URL -- the Directus base URL, e.g. https://directus.example.com
+--    (no /items/... suffix -- the tools append that themselves).
+
+-- 3. Confirm Directus's date_created system field is actually enabled on
+--    crm_leads (Data Model -> crm_leads -> date_created field). If it is not,
+--    tools/crm-leads-fetch.js's filter[date_created][_gte] will not do
+--    anything useful and the fetch window needs a different field -- update
+--    this file and tools/crm-leads-fetch.js together if so.
