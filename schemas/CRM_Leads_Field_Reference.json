@@ -1,0 +1,925 @@
+[
+  {
+    "display_name": "Tags",
+    "column_name": "tags",
+    "field_type": "JSON",
+    "possible_values": {
+      "type": "array",
+      "items": "string",
+      "example": [
+        "JavaScript",
+        "Qualtrics",
+        "CSS"
+      ]
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Organization Name",
+    "column_name": "organization_name",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Website",
+    "column_name": "website",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Organization LinkedIn",
+    "column_name": "organization_linkedin",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Industry",
+    "column_name": "industry",
+    "field_type": "UUID",
+    "possible_values": [
+      {
+        "id": "32eafb27-cd5b-48af-9960-1d3ba9c25357",
+        "value": "Service Provider"
+      },
+      {
+        "id": "65b58967-dae6-47d5-a3e9-b3b0b6a6efc3",
+        "value": "ManagementISV"
+      },
+      {
+        "id": "3ff42ea0-6e91-45be-943f-5781e3149fc4",
+        "value": "Optical Networking"
+      },
+      {
+        "id": "eb11ee77-7ef0-4320-930d-4fbdfbd4740d",
+        "value": "Storage Equipment"
+      },
+      {
+        "id": "c6c5b025-9251-424d-9fc5-1e0d50911ffe",
+        "value": "Small/Medium Enterprise"
+      },
+      {
+        "id": "82a9a231-1a16-4c1b-8aff-2ae4f6ca1f00",
+        "value": "MSP (Management Service Provider)"
+      },
+      {
+        "id": "a8d2d9d0-b173-4614-841a-5c637510f6ef",
+        "value": "Non-management ISV"
+      },
+      {
+        "id": "213e7d15-e022-4e77-ab87-923fe347653c",
+        "value": "ERP (Enterprise Resource Planning)"
+      },
+      {
+        "id": "2f49a5bd-58c7-4a62-aa71-ecbc2fd582ca",
+        "value": "Data/Telecom OEM"
+      },
+      {
+        "id": "aa30110d-d6ed-44d8-834b-619b5ef39ba4",
+        "value": "Storage Service Provider"
+      },
+      {
+        "id": "c1661ad7-a451-4758-a284-e94ecad454c2",
+        "value": "Wireless Industry"
+      },
+      {
+        "id": "82fbf61f-e7cb-4897-ac6b-6eefb7e685c5",
+        "value": "Network Equipment Enterprise"
+      },
+      {
+        "id": "46cac88e-c0cb-41c4-8d99-193d18cd1d31",
+        "value": "Government/Military"
+      },
+      {
+        "id": "6d895261-4735-42e6-9a25-86caee823d6b",
+        "value": "Large Enterprise"
+      },
+      {
+        "id": "9f09f53b-9a52-4c74-932d-b7e42b2e14f8",
+        "value": "Systems Integrator"
+      },
+      {
+        "id": "f39a7cc6-26eb-4280-9687-7245fd2d6a3e",
+        "value": "ASP (Application Service Provider)"
+      }
+    ],
+    "validation": null
+  },
+  {
+    "display_name": "No of Employees",
+    "column_name": "employees",
+    "field_type": "Integer",
+    "possible_values": {
+      "type": "integer"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Firstname",
+    "column_name": "firstname",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": "Regex -  ^[a-zA-Z ]*$"
+  },
+  {
+    "display_name": "Lastname",
+    "column_name": "lastname",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": "Regex -  ^[a-zA-Z ]*$"
+  },
+  {
+    "display_name": "Title",
+    "column_name": "title",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Lead Date",
+    "column_name": "lead_date",
+    "field_type": "Date",
+    "possible_values": {
+      "type": "string",
+      "format": "YYYY-MM-DD",
+      "example": "2026-09-07"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Lead Source",
+    "column_name": "lead_source",
+    "field_type": "UUID",
+    "possible_values": [
+      {
+        "id": "008fb80c-106e-4594-b1c4-00c4ceef5ba1",
+        "value": "BTS-2023"
+      },
+      {
+        "id": "018d2c27-362d-465f-a14b-c0b0ccc1feac",
+        "value": "Huddle-2023"
+      },
+      {
+        "id": "19376d25-8808-4288-90be-9c2923416524",
+        "value": "Gitex-2023"
+      },
+      {
+        "id": "1aaba54b-3d52-4bf6-ba10-ce7473f31fc7",
+        "value": "Employee Referral"
+      },
+      {
+        "id": "33dc3e3b-fb0f-4722-b5d4-cb888ad3558c",
+        "value": "Web Research"
+      },
+      {
+        "id": "3ab0bd15-ce05-4572-bc0f-dab37b90301d",
+        "value": "WebSite Visit"
+      },
+      {
+        "id": "4c7b4b92-3a19-47fa-9636-a1f49f521833",
+        "value": "Advertisement"
+      },
+      {
+        "id": "7add9c22-abdb-44d9-98a2-68b7a442f77a",
+        "value": "Twitter"
+      },
+      {
+        "id": "7cacbf87-dd05-44ab-97e6-e04397814114",
+        "value": "External Referral"
+      },
+      {
+        "id": "c9130b38-cc31-436c-8701-bdebb79e36c8",
+        "value": "LinkedIn"
+      },
+      {
+        "id": "ccdc3050-f872-4366-9194-fb0b9cbb92bf",
+        "value": "Sales Email Alias"
+      },
+      {
+        "id": "db775cc8-ea92-4373-b83e-93eae132f1cb",
+        "value": "Facebook"
+      },
+      {
+        "id": "fbb0fea7-4886-4310-b766-dbc562ba871b",
+        "value": "Inbound - Public Relations"
+      },
+      {
+        "id": "ff865eb0-8707-4009-8e8d-5f7ea5875ba0",
+        "value": "Trade Show"
+      }
+    ],
+    "validation": null
+  },
+  {
+    "display_name": "Description",
+    "column_name": "description",
+    "field_type": "Text",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Primary Email",
+    "column_name": "primary_email",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Mobile",
+    "column_name": "mobile",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Secondary Email",
+    "column_name": "secondary_email",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": "Regex -  ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+  },
+  {
+    "display_name": "Phone",
+    "column_name": "phone",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "LinkedIn",
+    "column_name": "linkedin",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "LinkedIn Connected Account",
+    "column_name": "linkedin_connected_account",
+    "field_type": "UUID",
+    "possible_values": [
+      {
+        "id": "13d44808-a582-4483-95b3-582e9005c234",
+        "value": "Mani"
+      },
+      {
+        "id": "3f5dae9c-85d3-4bdb-a910-0ee18a9330b5",
+        "value": "Sandhya"
+      },
+      {
+        "id": "5fc33d82-008e-4bea-9811-24aad5ed75f2",
+        "value": "Krishna"
+      },
+      {
+        "id": "6dba21b8-1274-4fef-a5ed-8c3ac9e99744",
+        "value": "Shri"
+      },
+      {
+        "id": "955c0f5f-7e92-4873-8d4f-3e35196d26bb",
+        "value": "Ram"
+      }
+    ],
+    "validation": null
+  },
+  {
+    "display_name": "Teams ID",
+    "column_name": "teams_id",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Whatsapp",
+    "column_name": "whatsapp",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Google Chat",
+    "column_name": "google_chat",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Instagram",
+    "column_name": "instagram",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Facebook",
+    "column_name": "facebook",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Street",
+    "column_name": "street",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "City",
+    "column_name": "city",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Zipcode",
+    "column_name": "zipcode",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Country",
+    "column_name": "country",
+    "field_type": "UUID",
+    "possible_values": [
+      {
+        "id": "95c999bc-1afb-4c72-b5c1-72872d503d36",
+        "value": "India"
+      },
+      {
+        "id": "527dd444-14b8-44b4-b1a5-38bf3a9a0880",
+        "value": "USA"
+      },
+      {
+        "id": "9f66c1d9-a08f-4f74-9121-e6faab37f0d6",
+        "value": "England"
+      },
+      {
+        "id": "32845e61-5eb4-4f85-ab20-592ab339fd79",
+        "value": "Italy"
+      },
+      {
+        "id": "870f2031-a58e-4506-a303-732576af60d4",
+        "value": "UAE"
+      },
+      {
+        "id": "51c91367-308f-4a44-a257-d9ae9e228234",
+        "value": "Australia"
+      },
+      {
+        "id": "21c71656-df67-44fe-bff1-2529d5587000",
+        "value": "Brazil"
+      },
+      {
+        "id": "9d80aeac-b7fc-4412-9684-3c2f8ef46068",
+        "value": "Canada"
+      },
+      {
+        "id": "8722a2a2-73a7-492e-8428-15e2a168acb1",
+        "value": "Netherlands"
+      },
+      {
+        "id": "f47e4bc1-e897-4470-bf58-ddd4d65ada7c",
+        "value": "New Zealand"
+      },
+      {
+        "id": "97a18212-7f7d-4420-bbe1-dea7a6c118e2",
+        "value": "Qatar"
+      },
+      {
+        "id": "1b4fd810-9078-4046-a98d-1e00bcf5fe39",
+        "value": "Saudi Arabia"
+      },
+      {
+        "id": "f713551b-2cce-4712-b630-69e02ad2ee39",
+        "value": "Singapore"
+      },
+      {
+        "id": "c9b02eec-be08-4fa9-bf12-12b86b5d22d5",
+        "value": "South Africa"
+      },
+      {
+        "id": "58592bd9-6eb1-4ea8-bd59-b0451c0dbd1c",
+        "value": "Switzerland"
+      }
+    ],
+    "validation": null
+  },
+  {
+    "display_name": "State",
+    "column_name": "state",
+    "field_type": "UUID",
+    "possible_values": [
+      {
+        "id": "746cbccc-19a3-4cc8-9bf9-4ffe7d4968f2",
+        "value": "Alabama"
+      },
+      {
+        "id": "15389899-78df-4c9e-b089-73f98979f6d6",
+        "value": "Alaska"
+      },
+      {
+        "id": "bd4e6157-7eb8-47a6-bc8e-61591f25ff6b",
+        "value": "Andaman and Nicobar Islands"
+      },
+      {
+        "id": "e1738e12-d47e-4166-a8f0-dff054ccbeb9",
+        "value": "Andhra Pradesh"
+      },
+      {
+        "id": "b9d5b082-b330-48d9-9a70-db8348ce92b4",
+        "value": "Arizona"
+      },
+      {
+        "id": "1a599f27-c2d3-4f98-a0cd-3fa87496edd4",
+        "value": "Arkansas"
+      },
+      {
+        "id": "e7697db9-c722-4cb5-9be4-628db991570e",
+        "value": "Arunachal Pradesh"
+      },
+      {
+        "id": "38af5224-5983-41bf-9a2a-f35b8a3ce9f7",
+        "value": "Assam"
+      },
+      {
+        "id": "4b890834-2815-41b7-8d26-b0bbfbb259c6",
+        "value": "Bihar"
+      },
+      {
+        "id": "dbc43aad-7c78-461c-a3be-c66d8597bb74",
+        "value": "California"
+      },
+      {
+        "id": "57799b95-a467-44fc-8288-4a0f1e9ed206",
+        "value": "Chandigarh"
+      },
+      {
+        "id": "6630a334-8933-4a13-bfb0-9203fb0444f5",
+        "value": "Chhattisgarh"
+      },
+      {
+        "id": "78affb76-5613-4490-b83d-00660c0f5bda",
+        "value": "Colorado"
+      },
+      {
+        "id": "d25458d2-95c3-432d-827c-3960358cdb40",
+        "value": "Connecticut"
+      },
+      {
+        "id": "33099cdb-950d-49cc-bfff-325e0bf48670",
+        "value": "Dadra and Nagar Haveli and Daman and Diu"
+      },
+      {
+        "id": "1bde141a-b0b4-46cd-a791-e3db7d7cdafd",
+        "value": "Delaware"
+      },
+      {
+        "id": "038e7612-bb36-48f4-854b-ff3101557bba",
+        "value": "Delhi"
+      },
+      {
+        "id": "7a6f7973-db6e-406b-8eb9-751c0a37a9e1",
+        "value": "Florida"
+      },
+      {
+        "id": "c5a6fad5-515c-4a14-bf56-25c79a71842e",
+        "value": "Georgia"
+      },
+      {
+        "id": "9c0979ea-2862-4386-98a4-815a6028bd80",
+        "value": "Goa"
+      },
+      {
+        "id": "d83a4146-4b30-49b9-aeb1-913b7418aef7",
+        "value": "Gujarat"
+      },
+      {
+        "id": "664cb33f-86ae-4b79-b212-9d7078a724a8",
+        "value": "Haryana"
+      },
+      {
+        "id": "b6f38030-4164-4819-8925-52af1b3d76a1",
+        "value": "Hawaii"
+      },
+      {
+        "id": "771fd917-b308-4fa0-8c75-68eb5d763d72",
+        "value": "Himachal Pradesh"
+      },
+      {
+        "id": "0b1dac03-6e23-46e8-9461-74de58482d03",
+        "value": "Idaho"
+      },
+      {
+        "id": "00a2364c-b358-4845-b38a-8cd2f05d9d32",
+        "value": "Illinois"
+      },
+      {
+        "id": "590ab29a-acbe-45d3-8906-82b1f8f54b81",
+        "value": "Indiana"
+      },
+      {
+        "id": "62d1e858-65d3-4c85-8d40-19c0973f58f8",
+        "value": "Iowa"
+      },
+      {
+        "id": "5968f7d3-ec80-40f8-ba9e-e20eda6165ec",
+        "value": "Jammu and Kashmir"
+      },
+      {
+        "id": "3fd46316-0e4b-4363-a3dc-45368fc7f114",
+        "value": "Jharkhand"
+      },
+      {
+        "id": "ff43f055-606c-468e-ba0e-acdc52af30fb",
+        "value": "Kansas"
+      },
+      {
+        "id": "eacf3805-2ab3-4bfc-80ea-fc71a0928b24",
+        "value": "Karnataka"
+      },
+      {
+        "id": "c88cb48a-d9ce-468f-8b46-2f2ab7ef9cc8",
+        "value": "Kentucky"
+      },
+      {
+        "id": "73b1ab73-2935-4164-925c-aa75f873e5d3",
+        "value": "Kerala"
+      },
+      {
+        "id": "ad0341b2-31d0-45c7-81c5-ee541537b637",
+        "value": "Ladakh"
+      },
+      {
+        "id": "9e532e79-037c-4424-aab9-686f57d068e3",
+        "value": "Lakshadweep"
+      },
+      {
+        "id": "6f93e96d-9ff4-468a-81f2-55c3604f2c27",
+        "value": "Louisiana"
+      },
+      {
+        "id": "c800a9d2-671a-49a2-be73-5b9a13a3cf52",
+        "value": "Madhya Pradesh"
+      },
+      {
+        "id": "5d350b0e-5146-4123-95ab-85a33fe11bb8",
+        "value": "Maine"
+      },
+      {
+        "id": "b399423a-c48d-4f65-9a43-d58b1a36c122",
+        "value": "Maharashtra"
+      },
+      {
+        "id": "9c11b293-ad69-4ca5-b796-5eaa744d10fa",
+        "value": "Maryland"
+      },
+      {
+        "id": "6bcc32ba-2cbc-4fa2-a8d9-d0b8f6547651",
+        "value": "Massachusetts"
+      },
+      {
+        "id": "8a6f7a8e-5664-4014-9506-38ca36eee1d2",
+        "value": "Meghalaya"
+      },
+      {
+        "id": "78ff8599-a8fd-4882-8c17-e0d7175e179e",
+        "value": "Michigan"
+      },
+      {
+        "id": "4d2b7f6e-08a0-425c-ad31-84d0d82ba86e",
+        "value": "Minnesota"
+      },
+      {
+        "id": "116201fd-2f0d-4e28-aaed-20f1c48879a9",
+        "value": "Mississippi"
+      },
+      {
+        "id": "db38190a-5ce4-487c-af70-045a3f8d39a1",
+        "value": "Mizoram"
+      },
+      {
+        "id": "fde7de7f-1d73-4fe8-a32e-b2f9a02628d5",
+        "value": "Missouri"
+      },
+      {
+        "id": "c8c6ca7c-51c5-4375-aad5-238ac8273b94",
+        "value": "Montana"
+      },
+      {
+        "id": "f6fa85bf-c693-4e32-a4e5-ac5269bc83ab",
+        "value": "Manipur"
+      },
+      {
+        "id": "6323cc76-35b9-493f-896c-164c2e35c106",
+        "value": "Nagaland"
+      },
+      {
+        "id": "decc9d4b-1d79-4f5f-97f2-901a4551379d",
+        "value": "Nebraska"
+      },
+      {
+        "id": "784b8502-c789-4e9f-b00d-ad6a6806a840",
+        "value": "Nevada"
+      },
+      {
+        "id": "8b8fb4ff-7385-46d9-9daa-a4302cb421ec",
+        "value": "New Hampshire"
+      },
+      {
+        "id": "b33185c3-4dc5-4976-b211-96ae12c0a84b",
+        "value": "New Jersey"
+      },
+      {
+        "id": "e74aabea-d5e4-42aa-be14-cdc00aedb29b",
+        "value": "New Mexico"
+      },
+      {
+        "id": "9772d723-6146-434a-a173-a3d42228f013",
+        "value": "New York"
+      },
+      {
+        "id": "dd128e7a-adab-4372-a582-c3bf6c8464f0",
+        "value": "North Carolina"
+      },
+      {
+        "id": "cf7844e8-9132-41a6-b6c0-39a9198c57fa",
+        "value": "North Dakota"
+      },
+      {
+        "id": "6b88e002-a61d-42bd-a3b9-0cfea3f831ce",
+        "value": "Odisha"
+      },
+      {
+        "id": "c58c8f20-4865-4ef2-b46b-ad2761488345",
+        "value": "Ohio"
+      },
+      {
+        "id": "5fe5d29a-315c-4cdd-ba16-4434459fbfed",
+        "value": "Oklahoma"
+      },
+      {
+        "id": "07938b8d-48b8-44d5-8968-64e3062ae183",
+        "value": "Oregon"
+      },
+      {
+        "id": "3b7e021f-250a-49a0-94f9-8f16ceca8465",
+        "value": "Pennsylvania"
+      },
+      {
+        "id": "a3ca08d8-6be3-41c5-9111-fa9f7a0e57e9",
+        "value": "Puducherry"
+      },
+      {
+        "id": "008317ac-7f1d-4e70-8893-ceca83a336f2",
+        "value": "Punjab"
+      },
+      {
+        "id": "980f8235-09c3-4028-86e6-12ce6a202965",
+        "value": "Rajasthan"
+      },
+      {
+        "id": "3fb22f0e-4374-4008-baca-d833b7d2d95b",
+        "value": "Rhode Island"
+      },
+      {
+        "id": "dea0e622-280d-4e48-8767-5bf51f23b9d1",
+        "value": "Sikkim"
+      },
+      {
+        "id": "8e5830ae-e501-4a0b-add0-043e320ccac4",
+        "value": "South Carolina"
+      },
+      {
+        "id": "613bb955-c2b6-4ac5-abdf-1576c401c3a5",
+        "value": "South Dakota"
+      },
+      {
+        "id": "3a0070b3-4afd-4f06-9c09-2261fb2665b7",
+        "value": "Tamil Nadu"
+      },
+      {
+        "id": "604ff407-5c89-4e19-b446-b380c432c1b9",
+        "value": "Telangana"
+      },
+      {
+        "id": "2afbdced-4b0a-49a2-87a8-5f318cf85fb8",
+        "value": "Tennessee"
+      },
+      {
+        "id": "dab70b5d-fcca-4236-b93b-3aca326c8be6",
+        "value": "Texas"
+      },
+      {
+        "id": "5243cccb-9f5b-4131-827b-c631fd3c6e7d",
+        "value": "Tripura"
+      },
+      {
+        "id": "dfcb561c-0a9f-43ee-9836-891626f49598",
+        "value": "Uttar Pradesh"
+      },
+      {
+        "id": "f2efd1d8-b566-4257-bb63-2d8a12c80c6a",
+        "value": "Uttarakhand"
+      },
+      {
+        "id": "45b40f71-e6e6-4663-934e-4df35311d7fe",
+        "value": "Utah"
+      },
+      {
+        "id": "be0a3b05-6f10-4959-bc8b-6dd828064235",
+        "value": "Vermont"
+      },
+      {
+        "id": "99663f0e-4936-4778-a589-dc0e10f18ec2",
+        "value": "Virginia"
+      },
+      {
+        "id": "6d7e8444-4ae0-4810-a822-d31117203bb1",
+        "value": "Washington"
+      },
+      {
+        "id": "de3d6320-c042-4463-ad0a-c4e3d497306a",
+        "value": "West Bengal"
+      },
+      {
+        "id": "662efe25-02bc-4cdd-9ca9-a87d582eb799",
+        "value": "West Virginia"
+      },
+      {
+        "id": "76f6b440-b8b5-4391-92db-07a14c7ceefb",
+        "value": "Wisconsin"
+      },
+      {
+        "id": "faad591e-99ea-4169-bffc-d211be583cfa",
+        "value": "Wyoming"
+      },
+      {
+        "id": "79857ac2-19ba-4575-bdbd-b759aaaf5257",
+        "value": "London"
+      },
+      {
+        "id": "5e6beacc-3c9a-4a97-9ee3-714422f7a693",
+        "value": "East Midlands"
+      },
+      {
+        "id": "25c171cc-7ea0-4591-9a8c-f4ece1a93f94",
+        "value": "Italy"
+      },
+      {
+        "id": "d6ce755a-f3eb-41de-a10b-78346fff686f",
+        "value": "Dubai"
+      },
+      {
+        "id": "60780f03-0e50-4dd9-9d2e-7a50591ab231",
+        "value": "Victoria"
+      },
+      {
+        "id": "1c6c0ff7-f800-4dfd-b08b-5de7dfe6d8f0",
+        "value": "Perth"
+      },
+      {
+        "id": "7b2ea7ed-beb4-417d-994c-b1964b6c42c0",
+        "value": "Saeo Paulo"
+      },
+      {
+        "id": "d2438d2e-e888-4c47-91da-2df27d06b0ac",
+        "value": "Alberta"
+      },
+      {
+        "id": "0a1d381b-3fc1-4ecd-acf8-93d2686d2f61",
+        "value": "Noord-Brabant"
+      },
+      {
+        "id": "0f1dec1f-4757-4d7e-b2fe-a6bff9b2f166",
+        "value": "Friesland"
+      },
+      {
+        "id": "c616bc8b-0aa1-447b-8768-5bee18fa6b66",
+        "value": "North Holland"
+      },
+      {
+        "id": "2d89049c-9f79-44ce-9a10-f6496d17e617",
+        "value": "Waikato"
+      },
+      {
+        "id": "4cdf93ae-5909-407c-bc4d-34ec3dae11e2",
+        "value": "Qatar"
+      },
+      {
+        "id": "cf689619-cf66-4e7d-8027-d34081ddcfbf",
+        "value": "Riyadh"
+      },
+      {
+        "id": "b21adc1a-f9e7-4480-91b1-08f095995fb6",
+        "value": "Singapore"
+      },
+      {
+        "id": "5b961788-8dc9-439a-9cc3-0c2b778ca425",
+        "value": "Johannesburg"
+      },
+      {
+        "id": "7ebd4a92-eb39-46c8-8b92-c14f702fe12a",
+        "value": "Aargau"
+      },
+      {
+        "id": "5acf2037-7352-4c31-ab34-226e869b1855",
+        "value": "Ahmedabad"
+      },
+      {
+        "id": "db84f7e5-b841-4b50-a3b9-65c415dc5857",
+        "value": "Illinois"
+      },
+      {
+        "id": "8e6ac589-92a1-4c6d-8a67-9bec86615240",
+        "value": "Georgia"
+      },
+      {
+        "id": "071ab383-ff8b-4ecd-9ae3-19bd5e4cb8fd",
+        "value": "Telangana"
+      },
+      {
+        "id": "f4a74272-65c8-4fee-b715-d3c6b4829f98",
+        "value": "Uttarpradesh"
+      },
+      {
+        "id": "d13e8b14-f47c-4a9e-915e-3ae0d820daea",
+        "value": "Möriken"
+      },
+      {
+        "id": "c613f30d-cd15-4b0f-adce-a59fc8716cd5",
+        "value": "Maharashtra"
+      }
+    ],
+    "validation": null
+  },
+  {
+    "display_name": "Job Posting URL",
+    "column_name": "job_posting_url",
+    "field_type": "String",
+    "possible_values": {
+      "type": "string"
+    },
+    "validation": null
+  },
+  {
+    "display_name": "Lead Source Description",
+    "column_name": "lead_source_description",
+    "field_type": "JSON",
+    "possible_values": {
+      "job_title": "Senior Sterling OMS Developer",
+      "work_mode": "Remote",
+      "skills_in_jd": [
+        "Java",
+        "Sterling OMS",
+        "OMS",
+        "API"
+      ],
+      "source_urls": [
+        "https://lnkd.in/p/gDawg-F2"
+      ]
+    },
+    "validation": null
+  }
+]
