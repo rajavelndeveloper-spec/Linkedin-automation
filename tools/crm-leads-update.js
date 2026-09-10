@@ -11,7 +11,8 @@
  * sending it, not deciding content.
  *
  * Usage:
- *   node crm-leads-update.js --id <lead-id> --log <path> --timezone <tz> [--dry-run]
+ *   node crm-leads-update.js --id <lead-id> --log <path> --timezone <tz>
+ *     [--payload-log <path>] [--dry-run]
  * (complete validated JSON patch-body on stdin)
  *
  * --dry-run prints the resolved target + body without sending anything -
@@ -20,6 +21,20 @@
  *
  * Output: one JSON object on stdout - { commit_state, id, status, response,
  * error }. commit_state is "confirmed", "failed", "unknown", or "dry-run".
+ *
+ * Side-effect logs (both under the gitignored logs/ dir, written automatically -
+ * no agent manages them):
+ *   1. --log  : a human-readable markdown table, one row per attempt, with
+ *               resolved-local Date/Time and safe row details (no payload).
+ *   2. --payload-log : an append-only JSONL payload audit trail - one JSON
+ *               object per REAL send (never on --dry-run) holding the exact
+ *               request body that went to Directus, the target row, the
+ *               field/dropped-key lists, the outcome, and both a UTC
+ *               `logged_at` and the resolved-local `date`/`time`/`timezone`.
+ *               Defaults next to --log as crm-leads-enrich-payloads.jsonl.
+ *               This file intentionally contains full contact values (email/
+ *               phone/etc.) as sent - it is a local audit log, never a
+ *               delivery target, and is covered by .gitignore's logs/ rule.
  */
 
 const fs = require("fs");
@@ -71,6 +86,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--id") args.id = argv[++i];
     else if (argv[i] === "--log") args.log = argv[++i];
+    else if (argv[i] === "--payload-log") args.payloadLog = argv[++i];
     else if (argv[i] === "--timezone") args.timezone = argv[++i];
     else if (argv[i] === "--dry-run") args.dryRun = true;
   }
@@ -196,9 +212,32 @@ function appendLogRow(logPath, row) {
   );
 }
 
+// Default payload-audit path: alongside the markdown response log, so the
+// two always land in the same logs/ dir even when --log is overridden.
+function defaultPayloadLog(mdLogPath) {
+  return path.join(path.dirname(mdLogPath || "./logs"), "crm-leads-enrich-payloads.jsonl");
+}
+
+// Appends the exact request body of one real PATCH attempt as a single JSON
+// line (JSONL - append-only, so a process killed mid-run can never corrupt
+// records already written). This is the payload audit trail: what was sent,
+// to which row, when (UTC `logged_at` + resolved-local date/time/zone), and
+// how it landed. Never called on --dry-run. A failure here is swallowed on
+// purpose - a missing audit line must never turn a confirmed PATCH into a
+// reported failure, and the markdown log still carries the attempt's row.
+function appendPayloadRecord(payloadLogPath, record) {
+  try {
+    fs.mkdirSync(path.dirname(payloadLogPath), { recursive: true });
+    fs.appendFileSync(payloadLogPath, JSON.stringify(record) + "\n");
+  } catch {
+    // Intentionally ignored - see comment above.
+  }
+}
+
 async function main() {
   loadEnv(path.resolve(__dirname, "..", ".env"));
   const args = parseArgs(process.argv.slice(2));
+  const payloadLog = args.payloadLog || defaultPayloadLog(args.log);
   const startMs = Date.now();
 
   if (!args.id || !UUID_RE.test(args.id)) {
@@ -270,9 +309,18 @@ async function main() {
     );
   } catch (error) {
     const { date, time } = now(zone);
+    const durationMs = Date.now() - startMs;
     appendLogRow(args.log, {
       date, time, id: args.id, fields: Object.keys(clean).join(", "),
-      result: "unknown", status: "transport-error", durationMs: Date.now() - startMs,
+      result: "unknown", status: "transport-error", durationMs,
+    });
+    appendPayloadRecord(payloadLog, {
+      logged_at: new Date().toISOString(),
+      date, time, timezone: zone,
+      id: args.id, method: "PATCH", target: targetUrl,
+      fields: Object.keys(clean), dropped_keys: dropped, payload: clean,
+      commit_state: "unknown", http_status: null, duration_ms: durationMs,
+      error: String(error),
     });
     console.log(JSON.stringify({ commit_state: "unknown", id: args.id, status: null, response: null, error: String(error) }));
     process.exitCode = 1;
@@ -285,6 +333,15 @@ async function main() {
   appendLogRow(args.log, {
     date, time, id: args.id, fields: Object.keys(clean).join(", "),
     result: success ? "confirmed" : "failed", status: result.status, durationMs,
+  });
+  appendPayloadRecord(payloadLog, {
+    logged_at: new Date().toISOString(),
+    date, time, timezone: zone,
+    id: args.id, method: "PATCH", target: targetUrl,
+    fields: Object.keys(clean), dropped_keys: dropped, payload: clean,
+    commit_state: success ? "confirmed" : "failed",
+    http_status: result.status, duration_ms: durationMs,
+    error: success ? null : `HTTP ${result.status}`,
   });
 
   console.log(

@@ -86,9 +86,14 @@ reason, per lead) → crm-leads-patch (merge + PATCH, per lead) → email-notify
 - Failed/blocked/partial/unknown PATCH delivery is reported as a failure through `RUN_RESULT` and
   the notify step — there is no local-file fallback; nothing in this project is ever written to
   disk as a delivery target except the gitignored operational logs under `logs/`.
-- PATCH logs are grouped by attempt with readable resolved-local Date/Time and safe row details.
-  Never log secrets, headers, credentials, or full contact values beyond what
-  `tools/crm-leads-update.js` already writes.
+- `tools/crm-leads-update.js` writes two PATCH logs automatically, both only under the gitignored
+  `logs/` dir and never a delivery target: a human-readable markdown response log grouped by
+  attempt with resolved-local Date/Time and safe row details (no payload, no secrets, no
+  headers), and an append-only JSONL payload audit log (`logs/crm-leads-enrich-payloads.jsonl`)
+  holding the exact request body of every real send — including any contact values it carried —
+  with UTC and resolved-local timestamps. Agents never write either file directly and never add a
+  third log; do not log secrets, headers, or credentials anywhere beyond what that tool already
+  writes.
 
 ## Change and audit rule
 

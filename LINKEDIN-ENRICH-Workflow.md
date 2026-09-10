@@ -202,6 +202,13 @@ Parse `{ commit_state, id, status, response, error }`. `commit_state: "confirmed
 `"failed"`/`"unknown"` are both reportable failures for that lead — never retried automatically
 within the same run.
 
+Every real send (never a `--dry-run`) also appends its exact request body to
+`./logs/crm-leads-enrich-payloads.jsonl` — one JSON object per line: `payload` (the body as sent),
+`id`, `target`, `fields`, `dropped_keys`, `commit_state`, `http_status`, `duration_ms`, and both a
+UTC `logged_at` and the resolved-local `date`/`time`/`timezone`. This is a payload audit trail
+separate from the human-readable response log; `tools/crm-leads-update.js` writes it on its own —
+`crm-leads-patch` neither manages nor passes anything for it.
+
 **Record the ledger immediately after this, for this one lead — before moving to the next lead in
 the batch**, per the Idempotency section above:
 ```bash

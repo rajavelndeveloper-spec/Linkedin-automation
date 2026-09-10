@@ -47,7 +47,9 @@ and `lead-url-enrich`'s diff for it.
   node tools/crm-leads-update.js --id <lead-id> --log ./logs/crm-leads-enrich-responses.md --timezone "<resolved>"
   ```
   with the merged patch body (a single JSON object) on stdin. Parse `{ commit_state, id, status,
-  response, error }`.
+  response, error }`. On every real send the tool also appends the exact body it sent to
+  `./logs/crm-leads-enrich-payloads.jsonl` (append-only JSONL, timestamped in UTC and
+  resolved-local) — you neither manage nor pass anything for that file.
 - Return `runner_alignment` (`"checked-unchanged"` or `"updated-verified"`), `commit_state`,
   `id`, and on failure the safe HTTP/error summary — never the full response body if it might
   contain sensitive values beyond what the tool's own log already redacts. Do not retry a
