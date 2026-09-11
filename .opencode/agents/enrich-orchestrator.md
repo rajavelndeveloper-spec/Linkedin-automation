@@ -61,7 +61,10 @@ permission:
      **once** with that lead's original row + the diff. That subagent sends **exactly one PATCH
      request** — there is no retry on failure. A `commit_state` of `failed`/`unknown` is that
      lead's final outcome: count it as `failed` and move to the next lead; never re-invoke
-     `crm-leads-patch` for it in this run.
+     `crm-leads-patch` for it in this run. If `crm-leads-patch` reports a non-empty `invalid_keys`
+     (values that failed `schemas/CRM_Leads_Field_Reference.json` validation and were not sent),
+     note it for the Finish summary even when `commit_state` is `confirmed` — those fields did not
+     land.
    - **Update the ledger once per lead, immediately after that lead's own terminal step — never
      batched to the end of the run**, so a crash partway through this run still preserves every
      lead it did finish:
@@ -87,8 +90,9 @@ permission:
    genuine final zero either — it's a correctly-skipped no-op; do not notify for it.
 6. **Finish:** Report fetched/already_processed/enriched/updated/failed/skipped counts, any
    `session_expired`/`extraction_uncertain` flags raised (name which leads, not just a count),
-   notification status, and PATCH runner alignment status if `crm-leads-patch` reported updating
-   it. Never describe a bounded fetch window as "no more leads exist" — only that none matched
+   any `invalid_keys` reported by `crm-leads-patch` (name the lead and which fields were
+   validated out, even on a confirmed PATCH), notification status, and PATCH runner alignment
+   status if `crm-leads-patch` reported updating it. Never describe a bounded fetch window as "no more leads exist" — only that none matched
    this run's filter (and separately, how many of those were already handled by a previous run).
 
 **Last line of your response, always, no exceptions** — a single-line JSON status a script can

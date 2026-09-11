@@ -125,10 +125,29 @@ still comes only from the scraped text/links actually in hand:**
   - `Phone` label → a company-level phone number. This is **not** the poster's personal number,
     but it is a real, callable number for outreach — see the contact-info fallback rule below for
     when to use it.
-  - `Industry` label → fold into `tags` (no dedicated `industry` column here).
-  - `Company size` label → the stated range (e.g. "51-200 employees", "1,001-5,000 employees") →
-    `employees`. Never estimate this from industry or company name.
-  - `Headquarters` label → the city portion → `city`.
+  - `Industry` label → **always** fold the raw text into `tags` (no loss either way). **Also** set
+    `industry` to the matching **id** in `schemas/CRM_Leads_Field_Reference.json`'s `industry`
+    enum (16 labels: Service Provider, ManagementISV, MSP, ERP, Large Enterprise, Systems
+    Integrator, ...), but only on a confident, near-exact match — never the label text itself, and
+    never a guessed closest option. LinkedIn's own industry taxonomy rarely maps cleanly onto this
+    legacy list, so most leads legitimately get no `industry` id even though `tags` still gained
+    the raw text. **This id must come from actually reading the reference file this run** (e.g.
+    `cat`/`grep` it) — never from memory of a previous lead's ids; an unread/misremembered id is
+    the most likely reason this field ends up silently omitted when a real match existed.
+  - `Company size` label → `employees`, as a **whole number** (the column is Integer). Take the
+    lower bound of the stated range as an integer — "51-200 employees" → `51`, "1,001-5,000
+    employees" → `1001` (strip commas) — or a single stated headcount as-is. Never send the range
+    string itself (the tool will drop it), and never estimate from industry or company name.
+  - `Headquarters` label → the city portion → `city` (always, as before). Also try to match the
+    country/region portion against the `country` and `state` enums in
+    `schemas/CRM_Leads_Field_Reference.json` — read the file itself for the literal ids, same as
+    `industry` above — and send the matching **id** (never the label) on a confident match:
+    `country`'s labels are each unique, so a clearly-named country is safe.
+    `state`'s list has genuine **duplicate labels mapped to different ids** ("Illinois", "Georgia",
+    "Telangana", and "Maharashtra" each appear twice, as of this file) — a CRM data-quality issue
+    this flow cannot resolve from LinkedIn text alone. When the matched state label is one of
+    those, or the match is otherwise ambiguous, **omit `state` entirely** rather than guess between
+    the ids; `city`/`country` are unaffected and should still be sent.
   - The page's own name (its H1/title, not a link's visible text) → `organization_name` —
     prefer this over a link's visible text whenever the company hop ran.
   - An "Overview" paragraph is also present but is marketing copy, not a fact source — don't
@@ -137,13 +156,42 @@ still comes only from the scraped text/links actually in hand:**
   post's job hop ran (its "About the company" blurb), then to whatever company panel text and
   `organization_linkedin` link are present on the source job/post page itself (`main_text`) — the
   same fields, each successively thinner sources.
-- `website` / `organization_linkedin` — beyond the `company_page` labels above, also accept a
-  non-LinkedIn company URL (`website`) or a `linkedin.com/company/...` link
-  (`organization_linkedin`) literally present in `links` or `main_text`.
+- `tags` — beyond the `Industry` label folded in above, pull in any skills, technologies, tools, or
+  role/seniority keywords **literally named** in `main_text`/`job_page.main_text`/
+  `company_page.main_text` (the same kind of content `lead_source_description.skills_in_jd` already
+  captures at insert time — this is a separate column landing the same signal). Merged as a
+  deduplicated union with the row's existing `tags`, never replaced, never an invented skill.
+- `website` — beyond the `company_page` label above, also accept a non-LinkedIn company URL
+  literally present in `links` or `main_text`.
+- `organization_linkedin` — primarily the scrape tool's own top-level **`company_link`** field
+  (not a re-scan of `links`/`main_text`). This matters most for a **post**: when the employer was
+  only resolvable through an embedded "View job" card (see the `job_page` note above),
+  `company_link` carries the resolved URL from `job_page.company_link` — a URL that was found on a
+  *different page* than the post itself and will never appear in the post's own `links`/`main_text`.
+  Only fall back to scanning `links`/`main_text` for a literal `linkedin.com/company/...` URL when
+  `company_link` is null.
+- `facebook` / `instagram` / `google_chat` / `teams_id` are the resolved **person's** own handles,
+  never the company's — source only from `profile_page.main_text`, `profile_page.contact_info_text`,
+  or the poster's own words in `main_text` (e.g. "follow me on Instagram @handle", a stated Teams
+  or Google Chat address). A company's own social links on `company_page` are not these fields.
+  LinkedIn essentially never surfaces a Teams id or Google Chat handle, so those two legitimately
+  stay `"not available"` on nearly every lead — include a field only when the page states one
+  directly for this person, never inferred.
 - `firstname` / `lastname` / `title` — from the resolved identity's name/headline
   (`profile_page.main_text` when the profile hop ran — check both the top-of-profile headline and
   the current position line under "Experience" — else the name string LinkedIn attached to the
-  post/job listing itself).
+  post/job listing itself). `firstname`/`lastname` columns only accept `^[a-zA-Z ]*$` (ASCII
+  letters and spaces). If the real name has a hyphen, apostrophe, accent, or period, do **not**
+  reshape it into something false — omit `firstname`/`lastname` and record the actual name in the
+  `description` note instead. `title` has no such restriction.
+- `linkedin` — the resolved identity's own profile URL (`profileUrl` on `poster`, or on
+  `original_post.poster` for a resolved reshare), written back **only** under the same
+  identity-confidence gate as `firstname`/`lastname`/`title` above: don't write it for an
+  unconfirmed `first-profile-link` job-poster guess, and prefer the original poster over a
+  resharer. This is a deliberate exception to "never regress" leniency in the other direction —
+  the column may already hold whatever URL the row was inserted with (a post link, not
+  necessarily a profile); a confidently-resolved profile URL is a genuine improvement and should
+  overwrite it.
 - **Contact info, in this priority order:**
   1. The resolved poster's own email/phone — scan `main_text`, `profile_page.main_text`, and
      `profile_page.contact_info_text` (the Contact info overlay, when the profile hop ran — this
@@ -161,12 +209,32 @@ still comes only from the scraped text/links actually in hand:**
   - Expect `primary_email`/`mobile`/`whatsapp` to still read `"not available"` on most leads even
     with the company-phone fallback applied — LinkedIn does not surface personal contact info by
     default, and that is a correct outcome to report, not a gap to keep digging for.
-- `linkedin` is never written, under any circumstance — it is a scrape source (see "Per-lead
-  procedure" above), not a derived fact. `tools/crm-leads-update.js` also strips it from any
-  request body as a hard backstop, but `lead-url-enrich`/`crm-leads-patch` must never attempt to
-  include it in the first place.
-- `description` — a short appended note (1–2 sentences) summarizing what enrichment found or
-  didn't, not a replacement for whatever was written at insert time.
+- `job_posting_url` is never written, under any circumstance — it is the row's own identity (which
+  URL it was inserted from). `tools/crm-leads-update.js` also strips it from any request body as a
+  hard backstop, but `lead-url-enrich`/`crm-leads-patch` must never attempt to include it in the
+  first place.
+- `lead_source` is always DERIVED by `tools/crm-leads-update.js` from the lead's own
+  `job_posting_url` (passed as `--job-posting-url`, never part of the JSON body), matched against
+  `schemas/CRM_Leads_Field_Reference.json`'s `lead_source` enum by domain — never a bare hardcoded
+  constant, and never something `lead-url-enrich`/`crm-leads-patch` compute or include in the body.
+  Every `job_posting_url` this flow ever sees is a LinkedIn URL, so this resolves to the "LinkedIn"
+  id in practice — but the tool actually checks the URL each time, and a lead whose
+  `job_posting_url` is empty/`"not available"` or doesn't match a known platform simply gets no
+  `lead_source` in its patch, never a guess.
+- `linkedin` is written (see the `firstname`/`lastname`/`title` bullet above) — it is also still a
+  scrape source read from at the start of "Per-lead procedure" above (the lead's *existing* value
+  is one candidate URL to open), so the same field is both read as input and, once a confident
+  identity is resolved, written as output for a given run.
+- `description` — **always populate this key, one way or the other; it is never skipped just
+  because the rest of the row was already well-known.** If the lead's existing `description` is
+  empty/`"not available"`, extract the actual job/post description text: for a `post`, `main_text`
+  is already just the caption and can be used directly; for a `job`, `main_text` is the *entire
+  page* (header, description body, then "Similar jobs"/footer boilerplate) — extract only the
+  description section, not the raw blob. If `description` already has real content (common on
+  `job` leads captured at insert time), `crm-leads-patch` instead appends a short 1–2 sentence note
+  summarizing what enrichment confirmed — that note is itself new evidence about this run and must
+  not be skipped under the general "omit unchanged facts" rule, which applies to repeated facts,
+  not to this note.
 - Anything not literally present: leave the existing field untouched (never regress a populated
   value) or, for a field that was already `"not available"`/`null` and stays that way, omit it
   from the diff entirely — `crm-leads-patch` only sends fields that actually changed.
@@ -203,13 +271,24 @@ newly-evidenced or explicitly-corrected fields, `lead_source_description` merged
 inside it), then:
 
 ```bash
-node tools/crm-leads-update.js --id <lead-id> --log ./logs/crm-leads-enrich-responses.md --timezone "<resolved>"
+node tools/crm-leads-update.js --id <lead-id> --log ./logs/crm-leads-enrich-responses.md --timezone "<resolved>" --job-posting-url "<lead's job_posting_url>"
 ```
 (merged patch body via stdin)
 
-Parse `{ commit_state, id, status, response, error }`. **Exactly one PATCH request is sent per
-lead — never a second call, no retry, no backoff, for any failure mode (non-2xx, transport error,
-timeout, ambiguous send).** `commit_state: "confirmed"` is success. `"failed"` (a non-2xx
+**Every value must fit its CRM column.** `tools/crm-leads-update.js` validates each allow-listed
+field against `schemas/CRM_Leads_Field_Reference.json` (the column's `field_type`, its validation
+regex, and any enumerated option list) before sending — anything that doesn't fit is dropped and
+returned in `invalid_keys` (`[{ key, reason }]`), never sent. So `crm-leads-patch` must already
+produce column-fitting values: `employees` a whole number (the lower bound of a "51-200" range,
+or a single stated headcount — never the range string); `firstname`/`lastname` only ASCII letters
+and spaces (`^[a-zA-Z ]*$` — if the real name has hyphens/apostrophes/accents, omit the field and
+put the name in `description`); `secondary_email` a valid email; `tags` a JSON array of strings;
+`lead_source_description` a JSON object. A non-empty `invalid_keys` on a `confirmed` result means
+those fields silently did not land — surface it, don't ignore it.
+
+Parse `{ commit_state, id, status, response, error, dropped_keys, invalid_keys }`. **Exactly one
+PATCH request is sent per lead — never a second call, no retry, no backoff, for any failure mode
+(non-2xx, transport error, timeout, ambiguous send).** `commit_state: "confirmed"` is success. `"failed"` (a non-2xx
 response) and `"unknown"` (the send itself errored) are each that lead's **final** outcome for
 this run: the lead is counted as failed, `RUN_RESULT` reflects it, and the failure email is sent
 per the Notification section below — nothing re-attempts the call. The lead is deliberately left

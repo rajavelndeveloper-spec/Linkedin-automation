@@ -27,13 +27,22 @@ reason, per lead) → crm-leads-patch (merge + PATCH, per lead) → email-notify
   why the env vars are named separately (`CRM_ENRICH_API_URL`/`CRM_ENRICH_API_TOKEN`, not
   `CRM_LEADS_API_URL`/`CRM_LEADS_API_SECRET`).
 - This flow never inserts a new `crm_leads` row and never touches a row's identity fields
-  (`job_posting_url`, `is_ai_generated`, `lead_source`, `lead_status`, `primary_bde`,
-  `recommended_for_outreach`) — see `schemas/crm_leads_enrich_mapping.sql`'s allow-list. `linkedin`
-  belongs in this same never-written category, with one added wrinkle: it is also an *active
-  scrape input* (`lead-url-enrich.md` treats it as a third URL candidate alongside
-  `job_posting_url` and `source_urls`, since it can hold a post link rather than a resolved
-  profile) — read from constantly, never written to, enforced in `tools/crm-leads-update.js`'s
-  code, not just agent instructions.
+  (`job_posting_url`, `is_ai_generated`, `lead_status`, `primary_bde`, `recommended_for_outreach`)
+  — see `schemas/crm_leads_enrich_mapping.sql`'s allow-list.
+- `lead_source` and `linkedin` are the two exceptions to "identity field, never rewritten" — both
+  ARE written, per explicit instruction, but neither is agent-judged content:
+  - `lead_source` is DERIVED by `tools/crm-leads-update.js` from the lead's own `job_posting_url`
+    (passed as `--job-posting-url`, never in the JSON body) — matched by domain against
+    `schemas/CRM_Leads_Field_Reference.json`'s `lead_source` enum and looked up by label, not a
+    bare hardcoded id — overriding whatever `crm-leads-patch` passed. Every `job_posting_url` this
+    flow ever sees is a LinkedIn URL, so this resolves to the "LinkedIn" option in practice, but
+    it's genuinely checked each time: an empty/unrecognized URL means no `lead_source` in that
+    patch, never a guess.
+  - `linkedin` is both a scrape input (`lead-url-enrich.md` treats the lead's existing value as a
+    candidate URL alongside `job_posting_url`/`source_urls`, since it can hold a post link rather
+    than a resolved profile) AND a write target: once a lead's poster identity is confidently
+    resolved, that person's own LinkedIn profile URL is written back here — ordinary evidenced
+    identity content, gated by the same identity-resolution confidence as `firstname`/`lastname`.
 - Discovery of *which* leads to process is deterministic (`tools/crm-leads-fetch.js`, one GET per
   run); discovery of *what's on each URL* is deterministic Playwright
   (`tools/linkedin-enrich-scrape.js`), not an LLM navigating a browser tool-call by tool-call —
@@ -85,6 +94,16 @@ reason, per lead) → crm-leads-patch (merge + PATCH, per lead) → email-notify
   script in place only for a material mismatch, verifies it, then sends. No duplicate runner,
   alternate script, or helper file — same discipline as the sibling project's
   `linkedin-api-publish.md`.
+- **Every value is shape-checked against `schemas/CRM_Leads_Field_Reference.json` before it is
+  sent.** `tools/crm-leads-update.js` loads that catalogue (each column's `field_type`, its
+  validation regex, its enumerated options) and drops any allow-listed value that doesn't fit its
+  column — wrong type (`employees` is Integer, not a range string), a value the column regex
+  rejects (`firstname`/`lastname` are `^[a-zA-Z ]*$`, `secondary_email` is an email pattern), a
+  non-array `tags` — returning them as `invalid_keys` (`[{ key, reason }]`) rather than letting
+  Directus 4xx. Clean numeric strings are coerced to numbers for Integer columns. If the
+  reference file can't be loaded, the tool fails closed (no PATCH). `crm-leads-patch` must build
+  column-fitting values in the first place and must surface a non-empty `invalid_keys` — those
+  fields did not land.
 - **One PATCH request per lead, no retry.** `tools/crm-leads-update.js` sends exactly one HTTP
   PATCH per invocation and never re-sends — no second attempt, no backoff — for any failure mode
   (non-2xx, transport error, timeout, ambiguous send). A `failed`/`unknown` result is that lead's

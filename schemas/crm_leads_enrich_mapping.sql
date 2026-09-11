@@ -16,39 +16,160 @@
 -- Allow-listed PATCH keys — enforced in tools/crm-leads-update.js's
 -- ALLOWED_TOP_KEYS, not just documented here. Anything not in this list is
 -- stripped from the request body before it is ever sent.
+--
+-- SHAPE / TYPE / VALIDATION of each allow-listed value is a second, separate
+-- gate, driven by schemas/CRM_Leads_Field_Reference.json (the CRM's own
+-- column catalogue: field_type + validation regex + enumerated options).
+-- tools/crm-leads-update.js loads that file and checks every value it is
+-- about to send; a value that does not fit its column is DROPPED and
+-- reported in `invalid_keys`, never sent. In particular:
+--   * employees (Integer)     -> must be a whole number. A "Company size"
+--                                range like "51-200 employees" is NOT valid;
+--                                crm-leads-patch.md must reduce it to an
+--                                integer (the lower bound) or omit the field.
+--                                A clean numeric string ("200") is coerced.
+--   * firstname / lastname     -> column regex ^[a-zA-Z ]*$ (ASCII letters and
+--                                spaces only — no hyphens, apostrophes,
+--                                accents, periods). A name that doesn't fit is
+--                                dropped; send only a form that already fits or
+--                                omit it and put the real name in description.
+--   * secondary_email          -> column regex is a standard email pattern.
+--   * tags (JSON)              -> must be a JSON array of strings.
+--   * lead_source_description  -> must be a JSON object.
+-- If CRM_Leads_Field_Reference.json cannot be loaded, the tool fails closed
+-- (no PATCH) rather than sending unvalidated.
 -- ----------------------------------------------------------------------------
 -- organization_name, website, organization_linkedin, employees  -> company
 --                                                                    facts found on the job/post/company page
--- firstname, lastname, title                                    -> the resolved poster's identity (see
+-- industry (UUID lookup)                                         -> ONLY when the company page's stated
+--                                                                    "Industry" label confidently matches one
+--                                                                    of CRM_Leads_Field_Reference.json's 16
+--                                                                    enumerated labels (Service Provider,
+--                                                                    ManagementISV, MSP, ERP, Large Enterprise,
+--                                                                    etc.) -- send the matching **id**, never
+--                                                                    the label text. LinkedIn's own industry
+--                                                                    taxonomy rarely lines up exactly with this
+--                                                                    legacy list, so most leads legitimately
+--                                                                    get no match -- omit the field rather than
+--                                                                    pick the closest-sounding one. The raw
+--                                                                    industry text is still folded into `tags`
+--                                                                    regardless of whether a confident id match
+--                                                                    exists, so nothing is lost either way.
+-- firstname, lastname, title, linkedin                          -> the resolved poster's identity (see
 --                                                                    "Reshare resolution" below) -- the
 --                                                                    ORIGINAL poster for a resolved reshare,
---                                                                    never the resharer
--- description                                                    -> free-text notes; enrichment APPENDS a
---                                                                    short note here, never replaces
---                                                                    whatever was already written at insert
---                                                                    time
+--                                                                    never the resharer. `linkedin` is that
+--                                                                    person's own profile URL, written only
+--                                                                    under the same identity-confidence gate as
+--                                                                    firstname/lastname (never for an
+--                                                                    unconfirmed first-profile-link guess) --
+--                                                                    see the note below this list; `linkedin`
+--                                                                    is also still read as a scrape-candidate
+--                                                                    input earlier in the flow, independent of
+--                                                                    this write
+-- lead_source                                                    -> ALWAYS DERIVED by
+--                                                                    tools/crm-leads-update.js from the lead's
+--                                                                    own job_posting_url (passed as
+--                                                                    --job-posting-url, never part of the JSON
+--                                                                    body), matched by domain against
+--                                                                    CRM_Leads_Field_Reference.json's
+--                                                                    lead_source enum and looked up by LABEL
+--                                                                    (never a hardcoded id) -- see
+--                                                                    classifyLeadSourceId(). Every
+--                                                                    job_posting_url this flow sees is a
+--                                                                    LinkedIn URL, so this resolves to the
+--                                                                    "LinkedIn" option in practice, but the
+--                                                                    code actually checks rather than assuming:
+--                                                                    an empty/"not available"/unrecognized URL
+--                                                                    means no `lead_source` in that patch at
+--                                                                    all, never a guess. crm-leads-patch.md
+--                                                                    does not compute or include this value
+--                                                                    itself -- it only passes the URL through
+-- description                                                    -> the job/post's OWN description text
+--                                                                    (from main_text/job_page.main_text) when
+--                                                                    the row's existing value is empty/"not
+--                                                                    available". Once real content already
+--                                                                    exists there (usually from insert time),
+--                                                                    enrichment instead APPENDS a short 1-2
+--                                                                    sentence note about what it confirmed --
+--                                                                    never a wholesale replacement
 -- primary_email, secondary_email, phone, mobile, whatsapp
---                                                                 -> contact info, only when literally
---                                                                    visible in scraped text -- LinkedIn does
---                                                                    not expose email/phone by default, so
---                                                                    these legitimately stay untouched
---                                                                    ("not available") on most rows. That is
---                                                                    a correct outcome, not a failed run
+--                                                                 -> the resolved POSTER's own contact info,
+--                                                                    only when literally visible in scraped
+--                                                                    text -- LinkedIn does not expose
+--                                                                    email/phone by default, so these
+--                                                                    legitimately stay untouched ("not
+--                                                                    available") on most rows. That is a
+--                                                                    correct outcome, not a failed run.
+--                                                                    `phone` alone has one documented fallback:
+--                                                                    the company's own About-tab number when
+--                                                                    the poster's personal contact isn't found
+--                                                                    (never mobile/whatsapp, which imply a
+--                                                                    personal device) -- see phone_source below
+-- google_chat, instagram, facebook, teams_id                     -> the resolved POSTER'S OWN handles, never
+--                                                                    the company's -- ONLY a literal handle/URL
+--                                                                    actually present on their profile
+--                                                                    (profile_page.main_text /
+--                                                                    contact_info_text) or stated in their own
+--                                                                    post/job text, the same evidence-only rule
+--                                                                    as `website`. A company's social links on
+--                                                                    company_page are NOT these fields.
+--                                                                    LinkedIn essentially never surfaces a
+--                                                                    Teams id or Google Chat handle, so
+--                                                                    `teams_id`/`google_chat` will almost
+--                                                                    always legitimately stay untouched --
+--                                                                    included for the rare case this specific
+--                                                                    person's page states one directly, never
+--                                                                    guessed.
 -- city, street, zipcode                                          -> address, only when literally present
--- tags (json)                                                     -> merged (union, deduped), never replaced
+-- country, state (UUID lookups)                                  -> ONLY when the company page's
+--                                                                    "Headquarters" text confidently names one
+--                                                                    of the enumerated country/state labels --
+--                                                                    send the matching **id**, never the label.
+--                                                                    `country`'s 15 labels are each unique, so
+--                                                                    a clear textual match is safe. `state`'s
+--                                                                    list has genuine DUPLICATE labels with
+--                                                                    different ids (as of this file: "Illinois",
+--                                                                    "Georgia", "Telangana", and "Maharashtra"
+--                                                                    each appear twice) -- a CRM data-quality
+--                                                                    issue this flow cannot resolve from
+--                                                                    LinkedIn text alone. When the matched
+--                                                                    label is ambiguous like that, omit `state`
+--                                                                    entirely rather than guess between the ids
+--                                                                    (the city/country still get their own
+--                                                                    unambiguous fields).
+-- tags (json)                                                     -> the Industry label (above) PLUS any
+--                                                                    skills/technologies/role keywords
+--                                                                    literally named in the job/post text (the
+--                                                                    same signal lead_source_description.
+--                                                                    skills_in_jd already captures at insert
+--                                                                    time, landing in this column too) --
+--                                                                    merged (union, deduped), never replaced
 -- lead_source_description (json)                                 -> merged, see shape below -- never a
 --                                                                    full-object replace
 --
--- Never sent, on purpose: lead_source, lead_status, country, state, industry
--- (CRM lookup-table FK ids this flow cannot produce), primary_bde/
--- secondary_bde (assignment, not an enrichment fact), recommended_for_outreach
--- (a scoring decision made at insert time -- this flow does not re-score),
--- is_ai_generated / job_posting_url / job_source_type (identity of the row,
--- never rewritten), email_opt_out (compliance flag, never touched by
--- automation), linkedin (a SOURCE this flow reads and scrapes from -- it can
--- hold a post URL just as easily as a resolved profile -- never a derived
--- fact it writes; tools/crm-leads-update.js enforces this in code, not just
--- in agent instructions).
+-- Never sent, on purpose:
+--   lead_status                    -- pipeline status, not an enrichment fact.
+--   primary_bde / secondary_bde    -- assignment, not an enrichment fact.
+--   recommended_for_outreach       -- a scoring decision made at insert time -- this flow does not re-score.
+--   is_ai_generated / job_source_type
+--                                  -- identity of the row, never rewritten.
+--   job_posting_url                -- identity of the row (which URL it was inserted from), never rewritten.
+--   email_opt_out                  -- compliance flag, never touched by automation.
+-- All of the above except `industry`/`country`/`state` are absent from
+-- CRM_Leads_Field_Reference.json entirely; those three ARE present there (as
+-- valid, generally-updatable CRM columns) but are still hard-excluded here
+-- for the row-identity/assignment reasons above -- being a valid column is
+-- necessary but not sufficient to be enrichment-writable. `job_posting_url`
+-- is under this same "valid column, still excluded" treatment.
+--
+-- `lead_source` and `linkedin` used to be excluded under this same
+-- "identity, fixed at insert time" reasoning. Both are now WRITTEN, per
+-- explicit instruction -- see the active mapping list above for how each is
+-- populated (one a code-derived value from job_posting_url, the other
+-- agent-judged evidenced content). `job_posting_url` remains excluded; only
+-- the URL a row was *inserted* with is off-limits, not the poster's own
+-- resolved profile URL or a domain-based read of that same URL.
 
 -- ----------------------------------------------------------------------------
 -- lead_source_description (json) — merge behavior
@@ -84,7 +205,7 @@
 -- always prefers original_post.poster over reposted_by when
 -- tools/linkedin-enrich-scrape.js returns both. If only a resharer identity
 -- could be captured (original post deleted/private/unreadable),
--- firstname/lastname/title may fall back to the resharer, but
+-- firstname/lastname/title/linkedin may fall back to the resharer, but
 -- lead_source_description.identity_confidence must then read
 -- "resharer-fallback" -- never silently presented as the same confidence as
 -- a genuine original-poster match.

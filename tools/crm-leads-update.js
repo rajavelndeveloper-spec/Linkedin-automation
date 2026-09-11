@@ -10,6 +10,18 @@
  * ever reaches this script; this script's job is validating the shape and
  * sending it, not deciding content.
  *
+ * SHAPE VALIDATION is driven by schemas/CRM_Leads_Field_Reference.json - the
+ * CRM's own column catalogue (type + validation regex + enumerated options).
+ * After the allow-list filter, every remaining value is checked against its
+ * column: wrong type (a range string in the Integer `employees` column), a
+ * value the column's regex rejects (`firstname`/`lastname` are `^[a-zA-Z ]*$`,
+ * `secondary_email` is an email pattern), a non-array `tags`, or a lookup
+ * value outside the column's option list is DROPPED and returned in
+ * `invalid_keys` - never sent, so a bad value becomes a visible skip here
+ * instead of an HTTP 4xx from Directus. Clean numeric strings are coerced to
+ * numbers for Integer columns. If the reference file itself can't be loaded,
+ * the run fails closed (no PATCH) rather than sending unvalidated.
+ *
  * EXACTLY ONE PATCH request is made per invocation - never more than one.
  * There is no retry, no second attempt, no backoff loop, for any failure
  * mode (non-2xx response, transport/network error, timeout, ambiguous send).
@@ -22,15 +34,24 @@
  *
  * Usage:
  *   node crm-leads-update.js --id <lead-id> --log <path> --timezone <tz>
- *     [--payload-log <path>] [--dry-run]
+ *     [--payload-log <path>] [--job-posting-url <url>] [--dry-run]
  * (complete validated JSON patch-body on stdin)
+ *
+ * --job-posting-url is the lead's OWN job_posting_url (never sent as patch
+ * content) - used only to derive `lead_source` by matching its domain against
+ * schemas/CRM_Leads_Field_Reference.json's lead_source enum (see
+ * classifyLeadSourceId()). Omit it (or pass an empty/"not available" value)
+ * and `lead_source` is simply left out of the patch - never guessed.
  *
  * --dry-run prints the resolved target + body without sending anything -
  * this flow writes to CRM rows that already exist, unlike an insert, so it
  * is worth confirming the exact PATCH before the first real send.
  *
  * Output: one JSON object on stdout - { commit_state, id, status, response,
- * error }. commit_state is "confirmed", "failed", "unknown", or "dry-run".
+ * error, dropped_keys, invalid_keys }. commit_state is "confirmed",
+ * "failed", "unknown", or "dry-run". dropped_keys lists non-allow-listed
+ * keys removed; invalid_keys lists { key, reason } for allow-listed values
+ * that failed field-reference validation.
  *
  * Side-effect logs (both under the gitignored logs/ dir, written automatically -
  * no agent manages them):
@@ -58,41 +79,207 @@ const { URL } = require("url");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// Contract-allowed top-level keys - only these are ever sent. Everything
-// else (FK lookup ids the model can't produce, or fields this flow should
-// never touch, like job_posting_url/is_ai_generated/primary_bde/
-// recommended_for_outreach/lead_status) is stripped before the request, not
-// merely ignored on the far end - see LINKEDIN-ENRICH-Workflow.md's PATCH
-// contract.
+// Contract-allowed top-level keys - only these are ever sent. This is every
+// column in schemas/CRM_Leads_Field_Reference.json that enrichment could
+// plausibly ever have real evidence for (from the scraped LinkedIn page,
+// its profile hop, or its company About-tab hop), plus `lead_source` and
+// `linkedin` per explicit instruction below - see
+// schemas/crm_leads_enrich_mapping.sql for the per-field rationale. A key
+// missing from this set is stripped before the request, not merely ignored
+// on the far end.
 //
-// `linkedin` is deliberately NOT in this list. It is a SOURCE the scraper
-// reads from (lead-url-enrich.md treats it as one more candidate URL to
-// open, alongside job_posting_url and lead_source_description.source_urls -
-// it can hold a post link just as easily as a resolved profile URL), never a
-// derived fact this flow writes. Enforced here in code, not just in agent
-// instructions, the same hard-guarantee treatment as job_posting_url/
-// is_ai_generated - even a confused agent cannot get this key into a
-// request, because it never reaches the HTTP call in the first place.
+// `job_posting_url` is still the one column deliberately EXCLUDED even
+// though it's a valid CRM_Leads column - it is the identity of the row
+// itself (which URL it was inserted from) and is never rewritten.
+//
+// `lead_source` is always DERIVED here, from the lead's own `job_posting_url`
+// (passed via --job-posting-url, never part of the patch body itself) matched
+// against a domain pattern and looked up by label in the reference file's own
+// `lead_source` enum - see classifyLeadSourceId() below - overriding whatever
+// crm-leads-patch.md passed in the body. This is deliberately NOT a bare
+// hardcoded constant: the URL is actually checked, so a lead whose
+// job_posting_url doesn't confidently match a known platform gets no
+// `lead_source` in the patch at all, rather than a guessed value.
+//
+// `linkedin` is BOTH a scrape source (lead-url-enrich.md treats the lead's
+// existing value as one more candidate URL to open, alongside
+// job_posting_url and lead_source_description.source_urls - it can hold a
+// post link rather than a resolved profile) AND, per explicit instruction, a
+// write target: once a lead's poster identity is confidently resolved (the
+// same identity-resolution rules that gate firstname/lastname/title), its
+// own LinkedIn profile URL is written back here - the actual person, not
+// whatever link the row happened to be inserted with. Ordinary merge-only
+// judgement (never regress a real value, never invent one) applies exactly
+// as it does to any other identity field - crm-leads-patch.md decides this
+// value, this file only validates its shape.
+//
+// `industry`, `country`, and `state` are UUID lookup columns - the reference
+// file's own enumerated `possible_values` (id + label) is the only valid set
+// of values, checked generically in checkValue() below. crm-leads-patch.md
+// must send the matching **id**, never the label text, and must omit the
+// field entirely on anything short of a confident match (see
+// crm_leads_enrich_mapping.sql's note on `state`'s duplicate labels).
 const ALLOWED_TOP_KEYS = new Set([
   "organization_name",
   "website",
   "organization_linkedin",
+  "industry",
   "employees",
   "firstname",
   "lastname",
   "title",
+  "linkedin",
+  "lead_source",
   "description",
   "primary_email",
   "secondary_email",
   "phone",
   "mobile",
   "whatsapp",
-  "city",
+  "google_chat",
+  "instagram",
+  "facebook",
+  "teams_id",
   "street",
+  "city",
   "zipcode",
+  "country",
+  "state",
   "tags",
   "lead_source_description",
 ]);
+
+// Domain patterns this flow can confidently map onto one of
+// schemas/CRM_Leads_Field_Reference.json's lead_source.possible_values
+// LABELS (the id is looked up from that same file, never hardcoded, so a
+// CRM-side id change never goes stale here). Checked in order; the first
+// match wins. Everything else in that enum (BTS-2023, Employee Referral,
+// Web Research, Advertisement, Sales Email Alias, Trade Show, ...) has no
+// URL-derivable signal at all and is never guessed at.
+const LEAD_SOURCE_URL_PATTERNS = [
+  { label: "LinkedIn", pattern: /linkedin\.com|lnkd\.in/i },
+  { label: "Twitter", pattern: /(^|\.)twitter\.com|(^|\.)x\.com|(^|\.)t\.co/i },
+  { label: "Facebook", pattern: /facebook\.com|fb\.com/i },
+];
+
+// Resolves `lead_source`'s id from the lead's own job_posting_url, never from
+// agent judgement. Returns null (never a guess) when the URL is empty, the
+// literal "not available" sentinel, or matches none of the known platform
+// patterns above - a lead like that simply gets no `lead_source` in its
+// patch, exactly like any other field with no confident evidence.
+function classifyLeadSourceId(jobPostingUrl, reference) {
+  const url = String(jobPostingUrl || "").trim();
+  if (!url || url.toLowerCase() === "not available") return null;
+  const spec = reference.get("lead_source");
+  if (!spec || !Array.isArray(spec.possibleValues)) return null;
+  for (const { label, pattern } of LEAD_SOURCE_URL_PATTERNS) {
+    if (pattern.test(url)) {
+      const match = spec.possibleValues.find((p) => p && p.value === label);
+      if (match) return match.id;
+    }
+  }
+  return null;
+}
+
+// The CRM's own field catalogue - column type, validation regex, and (for
+// lookup columns) the enumerated id/value list - lives here. crm-leads-patch.md
+// decides *which* allow-listed fields to send; this file is where each value
+// is checked against the column it targets *before* the single PATCH, so a
+// value Directus would reject (a range string in an Integer column, a name
+// with characters the column's regex forbids, a non-array `tags`) is dropped
+// and reported as `invalid_keys` rather than turned into an HTTP 4xx.
+const FIELD_REFERENCE_PATH = path.resolve(__dirname, "..", "schemas", "CRM_Leads_Field_Reference.json");
+
+function loadFieldReference() {
+  const arr = JSON.parse(fs.readFileSync(FIELD_REFERENCE_PATH, "utf8"));
+  if (!Array.isArray(arr)) throw new Error("Field reference is not a JSON array.");
+  const map = new Map();
+  for (const entry of arr) {
+    if (!entry || typeof entry.column_name !== "string") continue;
+    let regex = null;
+    if (typeof entry.validation === "string") {
+      // Stored as e.g.  "Regex -  ^[a-zA-Z ]*$"
+      const m = entry.validation.match(/Regex\s*-\s*(.+)$/i);
+      if (m) {
+        try {
+          regex = new RegExp(m[1].trim());
+        } catch {
+          regex = null; // an unparseable pattern is treated as "no regex"
+        }
+      }
+    }
+    map.set(entry.column_name, {
+      type: String(entry.field_type || "").toLowerCase(),
+      regex,
+      possibleValues: entry.possible_values,
+    });
+  }
+  return map;
+}
+
+// Returns { ok: true, value } (value possibly coerced, e.g. a clean numeric
+// string -> Number for an Integer column) or { ok: false, reason } when the
+// value does not fit the column's type / enumerated set / validation regex.
+// An explicit null is always shape-valid (a deliberate "clear this field").
+function checkValue(spec, value) {
+  if (!spec) return { ok: false, reason: "no field-reference entry for this column" };
+  if (value === null) return { ok: true, value: null };
+
+  const t = spec.type;
+
+  if (t === "string" || t === "text") {
+    if (typeof value !== "string") return { ok: false, reason: `expected a string for a ${t} column` };
+  } else if (t === "integer") {
+    let n = value;
+    if (typeof value === "string" && /^-?\d+$/.test(value.trim())) n = Number(value.trim());
+    if (!Number.isInteger(n)) return { ok: false, reason: "expected an integer" };
+    value = n;
+  } else if (t === "boolean") {
+    if (typeof value !== "boolean") return { ok: false, reason: "expected a boolean" };
+  } else if (t === "date") {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return { ok: false, reason: "expected a YYYY-MM-DD date string" };
+    }
+  } else if (t === "uuid") {
+    if (typeof value !== "string" || !UUID_RE.test(value)) return { ok: false, reason: "expected a UUID string" };
+  } else if (t === "json") {
+    const wantsArray =
+      spec.possibleValues && !Array.isArray(spec.possibleValues) && spec.possibleValues.type === "array";
+    if (wantsArray) {
+      if (!Array.isArray(value)) return { ok: false, reason: "expected a JSON array" };
+      if (!value.every((v) => typeof v === "string")) return { ok: false, reason: "expected an array of strings" };
+    } else if (typeof value !== "object" || Array.isArray(value)) {
+      return { ok: false, reason: "expected a JSON object" };
+    }
+  }
+
+  // Enumerated lookup column: the value must be one of the listed ids/values.
+  if (Array.isArray(spec.possibleValues) && spec.possibleValues.length > 0) {
+    const allowed = spec.possibleValues.map((p) => (p && typeof p === "object" && "id" in p ? p.id : p));
+    if (!allowed.includes(value)) return { ok: false, reason: "not one of the column's allowed options" };
+  }
+
+  // Column-level validation regex (only meaningful for a non-empty string).
+  if (spec.regex && typeof value === "string" && value !== "" && !spec.regex.test(value)) {
+    return { ok: false, reason: `fails the column's validation pattern ${spec.regex}` };
+  }
+
+  return { ok: true, value };
+}
+
+// Splits an already-allow-listed body into the fields that fit their columns
+// (with any coercions applied) and a list of { key, reason } for those that
+// don't. Nothing that fails here is ever sent.
+function validateAgainstReference(allowed, reference) {
+  const valid = {};
+  const invalid = [];
+  for (const [key, rawValue] of Object.entries(allowed)) {
+    const result = checkValue(reference.get(key), rawValue);
+    if (result.ok) valid[key] = result.value;
+    else invalid.push({ key, reason: result.reason });
+  }
+  return { valid, invalid };
+}
 
 function parseArgs(argv) {
   const args = { log: "./logs/crm-leads-enrich-responses.md" };
@@ -100,6 +287,7 @@ function parseArgs(argv) {
     if (argv[i] === "--id") args.id = argv[++i];
     else if (argv[i] === "--log") args.log = argv[++i];
     else if (argv[i] === "--payload-log") args.payloadLog = argv[++i];
+    else if (argv[i] === "--job-posting-url") args.jobPostingUrl = argv[++i];
     else if (argv[i] === "--timezone") args.timezone = argv[++i];
     else if (argv[i] === "--dry-run") args.dryRun = true;
   }
@@ -284,9 +472,37 @@ async function main() {
     return;
   }
 
-  const { clean, dropped } = sanitizeBody(body);
+  const { clean: allowed, dropped } = sanitizeBody(body);
+
+  let reference;
+  try {
+    reference = loadFieldReference();
+  } catch (error) {
+    console.log(JSON.stringify({
+      commit_state: "failed", id: args.id, status: null, response: null,
+      error: `schemas/CRM_Leads_Field_Reference.json could not be loaded (${String(error)}) - refusing to PATCH unvalidated.`,
+      dropped_keys: dropped, invalid_keys: [],
+    }));
+    process.exitCode = 1;
+    return;
+  }
+
+  const { valid: clean, invalid } = validateAgainstReference(allowed, reference);
+
+  // `lead_source` is always DERIVED from the lead's own job_posting_url, never
+  // taken from crm-leads-patch.md's body - see classifyLeadSourceId() and
+  // ALLOWED_TOP_KEYS's comment. A URL that doesn't confidently match a known
+  // platform simply means no `lead_source` in this patch - never a guess.
+  const derivedLeadSource = classifyLeadSourceId(args.jobPostingUrl, reference);
+  if (derivedLeadSource) clean.lead_source = derivedLeadSource;
+  else delete clean.lead_source;
+
   if (Object.keys(clean).length === 0) {
-    console.log(JSON.stringify({ commit_state: "failed", id: args.id, status: null, response: null, error: "Patch body had no allow-listed fields after sanitizing.", dropped_keys: dropped }));
+    console.log(JSON.stringify({
+      commit_state: "failed", id: args.id, status: null, response: null,
+      error: "Patch body had no valid fields after allow-list + field-reference validation.",
+      dropped_keys: dropped, invalid_keys: invalid,
+    }));
     process.exitCode = 1;
     return;
   }
@@ -301,8 +517,10 @@ async function main() {
         commit_state: "dry-run",
         id: args.id,
         status: null,
-        response: { target: targetUrl, body: clean, dropped_keys: dropped },
+        response: { target: targetUrl, body: clean, dropped_keys: dropped, invalid_keys: invalid },
         error: null,
+        dropped_keys: dropped,
+        invalid_keys: invalid,
       })
     );
     return;
@@ -347,11 +565,11 @@ async function main() {
       logged_at: new Date().toISOString(),
       date, time, timezone: zone,
       id: args.id, method: "PATCH", target: targetUrl,
-      fields: Object.keys(clean), dropped_keys: dropped, payload: clean,
+      fields: Object.keys(clean), dropped_keys: dropped, invalid_keys: invalid, payload: clean,
       commit_state: "unknown", http_status: null, duration_ms: durationMs,
       error: String(error),
     });
-    console.log(JSON.stringify({ commit_state: "unknown", id: args.id, status: null, response: null, error: String(error) }));
+    console.log(JSON.stringify({ commit_state: "unknown", id: args.id, status: null, response: null, error: String(error), dropped_keys: dropped, invalid_keys: invalid }));
     process.exitCode = 1;
     return;
   }
@@ -367,7 +585,7 @@ async function main() {
     logged_at: new Date().toISOString(),
     date, time, timezone: zone,
     id: args.id, method: "PATCH", target: targetUrl,
-    fields: Object.keys(clean), dropped_keys: dropped, payload: clean,
+    fields: Object.keys(clean), dropped_keys: dropped, invalid_keys: invalid, payload: clean,
     commit_state: success ? "confirmed" : "failed",
     http_status: result.status, duration_ms: durationMs,
     error: success ? null : `HTTP ${result.status}`,
@@ -380,6 +598,8 @@ async function main() {
       status: result.status,
       response: success ? (result.json?.data ?? null) : (result.raw || "").slice(0, 500),
       error: success ? null : `HTTP ${result.status}`,
+      dropped_keys: dropped,
+      invalid_keys: invalid,
     })
   );
   if (!success) process.exitCode = 1;

@@ -150,17 +150,6 @@
     "validation": null
   },
   {
-    "display_name": "Lead Date",
-    "column_name": "lead_date",
-    "field_type": "Date",
-    "possible_values": {
-      "type": "string",
-      "format": "YYYY-MM-DD",
-      "example": "2026-09-07"
-    },
-    "validation": null
-  },
-  {
     "display_name": "Lead Source",
     "column_name": "lead_source",
     "field_type": "UUID",
@@ -276,34 +265,6 @@
     "possible_values": {
       "type": "string"
     },
-    "validation": null
-  },
-  {
-    "display_name": "LinkedIn Connected Account",
-    "column_name": "linkedin_connected_account",
-    "field_type": "UUID",
-    "possible_values": [
-      {
-        "id": "13d44808-a582-4483-95b3-582e9005c234",
-        "value": "Mani"
-      },
-      {
-        "id": "3f5dae9c-85d3-4bdb-a910-0ee18a9330b5",
-        "value": "Sandhya"
-      },
-      {
-        "id": "5fc33d82-008e-4bea-9811-24aad5ed75f2",
-        "value": "Krishna"
-      },
-      {
-        "id": "6dba21b8-1274-4fef-a5ed-8c3ac9e99744",
-        "value": "Shri"
-      },
-      {
-        "id": "955c0f5f-7e92-4873-8d4f-3e35196d26bb",
-        "value": "Ram"
-      }
-    ],
     "validation": null
   },
   {
@@ -892,15 +853,6 @@
         "value": "Maharashtra"
       }
     ],
-    "validation": null
-  },
-  {
-    "display_name": "Job Posting URL",
-    "column_name": "job_posting_url",
-    "field_type": "String",
-    "possible_values": {
-      "type": "string"
-    },
     "validation": null
   },
   {

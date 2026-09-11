@@ -20,20 +20,40 @@ from what a similar lead usually has — see `LINKEDIN-ENRICH-Workflow.md`'s evi
 
 **Your three priorities, in this order, every single lead:**
 1. **Company** — who is actually hiring: `organization_name`, `website`, `organization_linkedin`,
-   `employees`, `industry`/`tags`.
-2. **Poster identity** — the real human behind this lead: `firstname`, `lastname`, `title`.
+   `employees`, `industry` (a lookup id — see step 4 — always also folded into `tags`), `city`,
+   `country`, `state` (lookup ids, see step 4).
+2. **Poster identity** — the real human behind this lead: `firstname`, `lastname`, `title`,
+   `linkedin` (their own profile URL — see step 4, gated by the same identity-confidence rules).
 3. **Contact info** — anything reachable: `primary_email`, `secondary_email`, `phone`, `mobile`,
-   `whatsapp`.
+   `whatsapp`, and — only when a page literally links to one — `facebook`, `instagram`,
+   `google_chat`, `teams_id`.
 Read `main_text`, `profile_page.main_text`, `company_page.main_text`, and `job_page.main_text`
 (when present) **in full**, not a skim — these are short, plain-text pages, and the fields above
 are exactly what this whole flow exists to find. Do not stop at the first sentence or two of each
 block.
 
-**`linkedin` is a source you read, never a field you write.** The lead's existing `linkedin`
-column is one more URL to open — like `job_posting_url`, it is not guaranteed to be a resolved
-profile: it can just as easily hold a post link. Use it as a candidate below, but it never
-appears in `enriched_fields` under any circumstance, no matter what you find — `tools/crm-leads-update.js`
-also enforces this in code, but do not rely on that backstop; simply never write it yourself.
+**`linkedin` is both a source you read and, once identity is confirmed, a field you write.** The
+lead's *existing* `linkedin` value is one more URL to open as a scrape candidate below — like
+`job_posting_url`, it is not guaranteed to be a resolved profile, it can just as easily hold a
+post link. Independently of that, once you've resolved this lead's poster identity with real
+confidence (see step 3), put **that person's own profile URL** in `enriched_fields.linkedin` —
+the same identity-confidence gate that applies to `firstname`/`lastname`/`title` applies here too:
+never write it for an unconfirmed `first-profile-link` job-poster guess, and always prefer the
+original poster over a resharer for a resolved reshare.
+
+**`lead_source` needs no extraction from you.** `tools/crm-leads-update.js` derives it itself by
+checking the lead's own `job_posting_url` against `schemas/CRM_Leads_Field_Reference.json`'s
+`lead_source` enum — do not compute it, match it against the enum yourself, or include it in
+`enriched_fields`; `crm-leads-patch.md` just passes the URL through as a command-line argument, not
+part of your diff.
+
+**Before matching `industry`, `country`, or `state` to anything, actually read that enum from
+`schemas/CRM_Leads_Field_Reference.json`** — e.g. `cat schemas/CRM_Leads_Field_Reference.json` or
+grep for `"column_name": "industry"` (or `country`/`state`) and read the `possible_values` array
+that follows. Use the literal `id` from that file, verbatim — never an id recalled from memory,
+from a previous lead, or guessed by pattern. An id that didn't come from actually reading the file
+this run is exactly as wrong as fabricating one, and is the most likely reason a lookup field ends
+up silently omitted when it shouldn't be.
 
 1. Build the URL candidate list from the lead you were given, in this order: `job_posting_url`
    (if non-empty and not the literal `"not available"` string), then the lead's own `linkedin`
@@ -75,8 +95,8 @@ also enforces this in code, but do not rely on that backstop; simply never write
      as-is. For `"first-profile-link"`, cross-check before using it: does `profile_page.main_text`
      (their headline/current position) plausibly connect to this job's company or role? If it
      looks unrelated (a random connection, not someone at the hiring company), do **not** use it
-     for `firstname`/`lastname`/`title` — treat this lead as having no confirmed poster identity
-     instead of writing a likely-wrong name, and reflect that in `outcome`.
+     for `firstname`/`lastname`/`title`/`linkedin` — treat this lead as having no confirmed poster
+     identity instead of writing a likely-wrong name or URL, and reflect that in `outcome`.
    - Otherwise (a non-reshare post) → use `poster` directly, no confidence note needed.
 4. **Extract, source by source — read `LINKEDIN-ENRICH-Workflow.md`'s Field extraction rules for
    the exact per-field logic, and hunt actively rather than settling for the first sentence:**
@@ -84,12 +104,45 @@ also enforces this in code, but do not rely on that backstop; simply never write
      **About** tab, forced by the tool, confirmed against a live page to render exactly these
      labels as plain text): read it label by label —
      `Website` → `website`; `Phone` → a **company** phone number (see the contact-info fallback
-     rule below — this is not the poster's personal number); `Industry` → fold into `tags` (no
-     dedicated `industry` column); `Company size` (e.g. "51-200 employees") → `employees` — this
-     line often sits lower on the page, keep reading past the first paragraph; `Headquarters` →
-     the city portion → `city`; the page's own name (its title, not a link's visible text) →
-     `organization_name`. Its "Overview" paragraph is marketing copy, not a fact source — don't
-     mine it beyond what the labels above give you.
+     rule below — this is not the poster's personal number); `Company size` → `employees` as a
+     **whole number** (the column is Integer): the lower bound of the range as an integer —
+     "51-200 employees" → `51`, "1,001-5,000 employees" → `1001` — or a single stated headcount
+     as-is. Never emit the range string (the update tool drops it). This line often sits lower on
+     the page, keep reading past the first paragraph. The page's own name (its title, not a link's
+     visible text) → `organization_name`. Its "Overview" paragraph is marketing copy, not a fact
+     source — don't mine it beyond what the labels above give you.
+     - `Industry` → **always** fold the raw label into `tags` (no loss either way). **Also** set
+       `industry` to the matching **id** from `schemas/CRM_Leads_Field_Reference.json`'s `industry`
+       enum, but only on a confident, near-exact match to one of its 16 labels (Service Provider,
+       ManagementISV, MSP (Management Service Provider), ERP (Enterprise Resource Planning), Large
+       Enterprise, Systems Integrator, ...). LinkedIn's own industry text ("IT Services and IT
+       Consulting", "Telecommunications", etc.) usually does **not** map cleanly onto this legacy
+       list — when it doesn't, omit `industry` entirely rather than pick the closest-sounding
+       option. Never send the label text itself; the column only accepts the id.
+   - **`organization_linkedin`** — primarily the tool's own top-level **`company_link`** field, not
+     a re-scan of `links`/`main_text`. This matters most for a **post**: when the employer was only
+     resolvable through an embedded job card (see step 2's `job_page` note), the resolved
+     `linkedin.com/company/...` URL lives in `company_link`/`job_page.company_link`, and will
+     **not** appear anywhere in the post's own `links` or `main_text` — it was found on a different
+     page entirely. Only if `company_link` is null, fall back to scanning `links`/`main_text` for a
+     literal `linkedin.com/company/...` URL yourself.
+   - **`tags`** (from `main_text`, `job_page.main_text`, and `company_page.main_text` combined) —
+     beyond the `Industry` label above, pull in any skills, technologies, tools, or role/seniority
+     keywords **literally named** in the job/post text (e.g. "Java", "Sterling OMS", "AWS",
+     "Remote", "Senior") — the same signal `lead_source_description.skills_in_jd` already captures
+     at insert time, just landing in this separate column too. Merge as a deduplicated union with
+     whatever `tags` the row already has — see `crm-leads-patch.md` — never invent a skill that
+     isn't literally in the text, and never replace the existing array.
+     - `Headquarters` → the city portion → `city` (unconditional, as before). Also try to match the
+       country/region portion against `schemas/CRM_Leads_Field_Reference.json`'s `country` and
+       `state` enums and send the matching **id** (never the label) when confident:
+       - `country`'s labels are each unique — a clear country name in "Headquarters" (e.g.
+         "Bengaluru, Karnataka, **India**") is safe to match.
+       - `state`'s list has genuine **duplicate labels mapped to different ids** (as of this file:
+         "Illinois", "Georgia", "Telangana", and "Maharashtra" each appear twice, with unrelated
+         ids). If the matched state label is one of these — or you cannot tell which of two
+         same-named entries is meant — **omit `state` entirely**; do not guess between the ids.
+         `city`/`country` are unaffected by this and should still be sent normally.
    - **From `job_page.main_text`** (only when a post's job hop ran and there is still no
      `company_page`): the job page's own "About the company" blurb — `organization_name`,
      `website`, and any stated headcount, same reading as `company_page` but a thinner source.
@@ -100,7 +153,25 @@ also enforces this in code, but do not rely on that backstop; simply never write
    - **From `profile_page.main_text`** (when the profile hop ran): `firstname`/`lastname` (split
      from the full name at the top), `title` (their current headline or current
      position/company line — LinkedIn profiles show this near the top and again under
-     "Experience").
+     "Experience"). The `firstname`/`lastname` columns accept only `^[a-zA-Z ]*$` (ASCII letters
+     and spaces). If the real name carries a hyphen, apostrophe, accent, or period, do **not**
+     invent a reshaped spelling — omit `firstname`/`lastname` from `enriched_fields` and put the
+     actual name in the `description` note. `title` has no charset restriction.
+   - **From the resolved identity's `profileUrl`** (`poster.profileUrl`, or
+     `original_post.poster.profileUrl` for a resolved reshare) — `linkedin`: this exact URL,
+     whenever the profile hop actually ran on it (i.e. it's the same URL `profile_page.url` came
+     from) and the identity-confidence gate above is satisfied. Do not construct or guess a
+     profile URL that wasn't literally used as the profile hop's target.
+   - **`facebook`, `instagram`, `google_chat`, `teams_id` are the resolved PERSON's own handles,
+     never the company's.** Source them only from `profile_page.main_text`,
+     `profile_page.contact_info_text`, or the poster's own words in `main_text` (e.g. "follow me
+     on Instagram @handle", "Teams: name@company.com", "WhatsApp/Google Chat me at...") — a literal
+     `facebook.com/...`/`instagram.com/...` link on their profile, or a handle/id they stated
+     themselves. A company's own social links (if any appear on `company_page`) are **not** these
+     fields — leave them out rather than attribute the company's presence to the person. LinkedIn
+     essentially never surfaces a Teams id or Google Chat handle, so those two will almost always
+     legitimately stay `"not available"` — include a field only on the rare page that states one
+     directly for this specific person, never guessed.
    - **Contact info, in this priority order:**
      1. The resolved poster's own info — scan `main_text`, `profile_page.main_text`, **and
         `profile_page.contact_info_text`** (the Contact info overlay, when the profile hop ran —
@@ -120,11 +191,29 @@ also enforces this in code, but do not rely on that backstop; simply never write
      **Still expect `primary_email`/`mobile`/`whatsapp` to read `"not available"` on most
      leads** — LinkedIn does not surface personal contact info by default — but do not skip
      either scan just because it's usually empty.
-   - A short 1–2 sentence appended note for `description` summarizing what was confirmed this run.
-   **Never include `linkedin` in `enriched_fields`** — it is a source input this step reads from
-     (see the note above step 1), never a field this flow writes, regardless of what identity you
-     resolved or how confident you are in it.
-   **Never fabricate a name, email, phone, URL, or headcount.** Only include a key in
+   - **`description` — always include this key; it is never optional just because the rest of the
+     row was already well-populated.** Check the lead's *existing* `description` first, then pick
+     exactly one of these two cases — do not skip both:
+     1. Existing value is empty/`"not available"` → extract the actual job/post description text
+        and put it in `enriched_fields.description`. For a **post**, `main_text` is already just
+        the caption — use it directly. For a **job**, `main_text` is the *whole page* (title,
+        company/location header, the description body, then boilerplate like "Similar jobs"/
+        "People also viewed"/footer nav at the end) — extract just the description section (the
+        prose between the job header and that trailing boilerplate), not the entire raw blob.
+     2. Existing value already has real content (common for `job` leads — insert time often
+        already captured the JD) → do **not** re-extract the description. Instead put a short 1–2
+        sentence note summarizing what THIS run confirmed (e.g. "Confirmed poster: Jane Doe,
+        Talent Acquisition; company: Acunor, ~150 employees"). This note is itself new evidence
+        about the run, not "nothing new" — never omit it under the general "omit anything you
+        didn't newly learn" rule below; that rule is about repeating unchanged *facts*, not about
+        this note. `crm-leads-patch.md` appends it to the existing text rather than replacing it,
+        so give it only the short note in this case, never the whole description again.
+   **Never include `lead_source` in `enriched_fields`** — `tools/crm-leads-update.js` derives it
+     itself from the lead's `job_posting_url` on every real PATCH; there is nothing for you to
+     compute or send for it.
+   **Never fabricate a name, email, phone, URL, headcount, or lookup id.** For `industry`/
+   `country`/`state`, "no confident match" is not a reason to send your best guess — omit the
+   field. Only include a key in
    `enriched_fields` when you actually found real evidence for it this run — omit anything you
    didn't newly learn, rather than repeating the lead's existing value or writing a sentinel;
    `crm-leads-patch` treats your output as a diff, not a full record.
